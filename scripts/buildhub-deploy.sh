@@ -296,7 +296,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
 
 log "Creating release tarball"
 rm -f "$TARBALL"
-tar -czf "$TARBALL" \
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "$TARBALL" \
   --exclude './.git' \
   --exclude './.build-hub' \
   --exclude './.claude' \
