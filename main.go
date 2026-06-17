@@ -42,6 +42,8 @@ func main() {
 	case "bridge":
 		log.Info("agent-room starting", slog.String("role", "bridge"), slog.String("version", version.String()))
 		err = runBridge(cfg, log, os.Args[2:])
+	case "direct-ai":
+		err = runDirectAI(os.Args[2:])
 	case "generate-id":
 		err = runGenerateID(os.Args[2:])
 	case "generate-token":
@@ -579,6 +581,11 @@ Self-hosted bridge or scripted invocation (all flags optional):
   agent-room bridge -relay wss://your-relay/v1/rooms/<room>/ws -room <room> -agent-id <id>
   agent-room bridge -mode executor -room <room> -exec-token <secret>
   agent-room bridge -bridge-mode executor -room <room> -exec-token <secret>
+
+Direct AI helper (message-level access, no bridge/provider/tools):
+  agent-room direct-ai -room https://relay/?room=<room> -agent-id ai-you -hello
+  agent-room direct-ai -room https://relay/?room=<room> -agent-id ai-you -tail 40
+  agent-room direct-ai -room https://relay/?room=<room> -agent-id ai-you -say "message"
 
 Other:
   agent-room generate-id -prefix executor

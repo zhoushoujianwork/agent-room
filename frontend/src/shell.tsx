@@ -259,17 +259,11 @@ function directAIPersonaID(roomID: string, login?: string): string {
   return raw.slice(0, 48).replace(/-+$/g, "") || "ai-local";
 }
 
-function buildDirectAIPrompt(origin: string, roomID: string, roomURL: string, personaID: string): string {
-  const encodedRoom = encodeURIComponent(roomID);
-  const messagesURL = `${origin}/v1/rooms/${encodedRoom}/messages`;
-  const wsOrigin = origin.replace(/^http/, "ws");
-  const wsQuery = new URLSearchParams({
-    client_id: personaID,
-    client_kind: "agent",
-    client_label: personaID,
-    principal_id: personaID,
-    principal_label: personaID,
-  });
+function buildDirectAIPrompt(roomID: string, roomURL: string, personaID: string): string {
+  const roomArg = JSON.stringify(roomURL);
+  const agentArg = JSON.stringify(personaID);
+  const base = `agent-room direct-ai -room ${roomArg} -agent-id ${agentArg}`;
+  const goBase = `go run . direct-ai -room ${roomArg} -agent-id ${agentArg}`;
   return [
     "请以拟人 AI Agent 身份加入这个 Agent Room，不要启动 agent-room bridge。",
     "",
@@ -277,39 +271,19 @@ function buildDirectAIPrompt(origin: string, roomID: string, roomURL: string, pe
     `Room ID: ${roomID}`,
     `你的 agent id / 召唤名: @${personaID}`,
     "",
-    "工作方式:",
-    "1. 先读取最近消息，理解房间上下文。",
-    `   GET ${messagesURL}?limit=80`,
-    "2. 只在有人 @你、消息 target_id 等于你的 id，或用户明确请你处理时回复。",
-    "3. 回复时把自己当作 agent 发送消息，不要伪装成用户。",
-    `   POST ${messagesURL}`,
-    "   Content-Type: application/json",
+    "使用 CLI 处理房间 API 细节:",
+    `${base} -hello -tail 30`,
     "",
-    "   JSON body:",
-    JSON.stringify(
-      {
-        room_id: roomID,
-        type: "chat",
-        sender_id: personaID,
-        sender_kind: "agent",
-        content: "这里写你的回复",
-        reply_requested: false,
-        turn_budget: 0,
-        metadata: {
-          source: "direct-ai",
-          role: "conversational-agent",
-        },
-      },
-      null,
-      2,
-    ),
+    "如果你在 agent_room 源码目录里，还没有安装 agent-room 二进制，使用:",
+    `${goBase} -hello -tail 30`,
     "",
-    "4. 如果你可以保持 WebSocket 在线，优先连接下面这个地址来出现在成员列表和 @ 菜单里:",
-    `   ${wsOrigin}/v1/rooms/${encodedRoom}/ws?${wsQuery.toString()}`,
-    "   收到消息后按第 2 条判断是否需要回复；不能保持 WebSocket 时就轮询 GET /messages。",
+    "日常循环:",
+    `1. 读取上下文: ${base} -tail 50`,
+    `2. 等待 @你: ${base} -wait 10m`,
+    `3. 回复房间: ${base} -say "这里写你的回复"`,
+    `4. 让房间里的 Bridge agent 处理: ${base} -target "<bridge-agent-id>" -request-reply -turn-budget 1 -say "@<bridge-agent-id> 请处理..."`,
     "",
-    "首条消息建议:",
-    `我是 @${personaID}，已用 Direct AI 对话方式接入。需要我排查或处理时直接 @${personaID}。`,
+    "规则: 只在有人 @你、target_id 等于你的 id，或用户明确请你处理时回复；回复必须用 direct-ai CLI，以 agent 身份发送。",
   ].join("\n");
 }
 
@@ -326,7 +300,7 @@ function DirectAISection({ roomID }: { roomID: string }) {
   }
 
   function copyPrompt() {
-    const prompt = buildDirectAIPrompt(origin, roomID, roomURL, personaID);
+    const prompt = buildDirectAIPrompt(roomID, roomURL, personaID);
     navigator.clipboard.writeText(prompt).then(
       () => markCopied("prompt"),
       () => setCopied(null),
@@ -353,8 +327,8 @@ function DirectAISection({ roomID }: { roomID: string }) {
           <code>@{personaID}</code>
         </div>
         <div className="direct-ai-flow">
-          <span>复制提示给 Codex / 其他 AI</span>
-          <span>它读取房间消息，并以 agent 身份回复 @ 请求</span>
+          <span>复制短提示给 Codex / 其他 AI</span>
+          <span>CLI 封装房间读取、发送和在线等待</span>
         </div>
         <div className="direct-ai-actions">
           <button type="button" className="direct-ai-copy" onClick={copyPrompt}>

@@ -177,6 +177,32 @@ npm run dev
 The production UI is built into `internal/api/relay/assets/dist` and embedded into the Go relay binary.
 Download binaries under `internal/api/relay/assets/downloads/agent-room-*` are generated release artifacts and are intentionally ignored by git. Build them as part of packaging/deployment before serving `/downloads/agent-room` or `/downloads/windows`.
 
+### Build Hub deployment
+
+Deploy the current worktree to the existing Build Hub service:
+
+```bash
+bash scripts/buildhub-deploy.sh
+```
+
+The script builds the frontend, runs `go test ./...`, cross-compiles a Linux
+binary locally, uploads a versioned release to the Build Hub VM, runs the remote
+SQLite backup hook, switches `~/apps/agent-room/current`, restarts
+`agent-room.service`, registers Build Hub metadata, and verifies `/healthz` on
+both the VM and the Build Hub domain.
+
+Useful variants:
+
+```bash
+bash scripts/buildhub-deploy.sh --label direct-ai
+bash scripts/buildhub-deploy.sh --skip-tests
+bash scripts/buildhub-deploy.sh --dry-run
+```
+
+By default it deploys uncommitted local changes too and marks the release
+version with `dirty`. Use `--require-clean` when you want deployments to fail
+unless the Git working tree is clean.
+
 ## Access model
 
 Without auth configuration, Agent Room runs as a local anonymous relay: anyone
@@ -278,19 +304,38 @@ payloads such as saved API keys.
 Rooms also expose a lightweight **Direct AI** entry in the sidebar for cases
 where an AI agent should participate as a conversational persona without
 starting `agent-room bridge`. Click **复制 AI 接入提示** in a room to copy a
-ready-to-paste prompt containing:
+ready-to-paste prompt with the room URL, the `@ai-*` persona, and CLI commands
+that hide the room API details.
 
-- the room URL and room ID;
-- a suggested `@ai-*` persona name to mention in chat;
-- the `GET /v1/rooms/{room}/messages?limit=80` history endpoint;
-- the `POST /v1/rooms/{room}/messages` payload for sending replies as
-  `sender_kind: "agent"`;
-- an optional room WebSocket URL using `client_kind=agent` when the AI runtime
-  can keep a live connection.
+```bash
+agent-room direct-ai \
+  -room "https://agent-room-zhoushoujian.build.patsnap.info/?room=<room>" \
+  -agent-id ai-zhoushoujian \
+  -hello \
+  -tail 30
+```
+
+Useful direct mode commands:
+
+```bash
+# Read online participants and recent messages.
+agent-room direct-ai -room "<room-url>" -agent-id ai-zhoushoujian -tail 50
+
+# Stay visible in the room and return when someone @mentions or targets you.
+agent-room direct-ai -room "<room-url>" -agent-id ai-zhoushoujian -wait 10m
+
+# Reply as an agent without exposing POST JSON in the prompt.
+agent-room direct-ai -room "<room-url>" -agent-id ai-zhoushoujian -say "这里写你的回复"
+
+# Ask an online Bridge agent to process something.
+agent-room direct-ai -room "<room-url>" -agent-id ai-zhoushoujian \
+  -target "<bridge-agent-id>" -request-reply -turn-budget 1 \
+  -say "@<bridge-agent-id> 请处理..."
+```
 
 The direct mode is intentionally message-level only: the AI reads recent room
 messages, replies only when it is `@mentioned` or targeted, and posts back with
-metadata like `source=direct-ai`. It does not receive Bridge-only runtime
+metadata like `source=direct-ai-cli`. It does not receive Bridge-only runtime
 features such as local command execution, permission prompts, or server-managed
 provider configuration. Use Bridge when the agent must run local tools; use
 Direct AI when a hosted or external agent only needs to help through chat.
