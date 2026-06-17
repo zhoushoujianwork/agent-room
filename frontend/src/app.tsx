@@ -1637,7 +1637,7 @@ function InnerApp() {
                   />
                 ) : messages.length === 0 ? (
                   <div className="messages-empty">
-                    <p>还没有消息。直接发一条，或本地启动 Bridge 加入。</p>
+                    <p>还没有消息。直接发一条，复制 Direct AI 提示，或本地启动 Bridge 加入。</p>
                     <p className="muted">房间链接本身就是访问凭证，请仅向受信任的人分享。</p>
                   </div>
                 ) : (

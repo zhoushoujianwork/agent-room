@@ -140,6 +140,8 @@ export function RoomSidebar({
         </div>
       </section>
 
+      <DirectAISection roomID={roomID} />
+
       <BridgeDownloadSection roomID={roomID} />
 
       <AccessControlSection
@@ -242,6 +244,126 @@ function BridgeDownloadSection({ roomID }: { roomID: string }) {
         <p className="side-download-note">
           已预填本房间与中转地址，粘贴到{os === "windows" ? " PowerShell " : "终端"}执行即接入。无需 Go 环境。
         </p>
+      </div>
+    </section>
+  );
+}
+
+/* ── Direct AI access (sidebar prompt copy, no bridge) ────────────── */
+
+function directAIPersonaID(roomID: string, login?: string): string {
+  const base = (login || roomID || "room").toLowerCase();
+  const clean = base.replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "");
+  const suffix = roomID.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 6) || "local";
+  const raw = `ai-${clean || suffix}`;
+  return raw.slice(0, 48).replace(/-+$/g, "") || "ai-local";
+}
+
+function buildDirectAIPrompt(origin: string, roomID: string, roomURL: string, personaID: string): string {
+  const encodedRoom = encodeURIComponent(roomID);
+  const messagesURL = `${origin}/v1/rooms/${encodedRoom}/messages`;
+  const wsOrigin = origin.replace(/^http/, "ws");
+  const wsQuery = new URLSearchParams({
+    client_id: personaID,
+    client_kind: "agent",
+    client_label: personaID,
+    principal_id: personaID,
+    principal_label: personaID,
+  });
+  return [
+    "请以拟人 AI Agent 身份加入这个 Agent Room，不要启动 agent-room bridge。",
+    "",
+    `Room URL: ${roomURL}`,
+    `Room ID: ${roomID}`,
+    `你的 agent id / 召唤名: @${personaID}`,
+    "",
+    "工作方式:",
+    "1. 先读取最近消息，理解房间上下文。",
+    `   GET ${messagesURL}?limit=80`,
+    "2. 只在有人 @你、消息 target_id 等于你的 id，或用户明确请你处理时回复。",
+    "3. 回复时把自己当作 agent 发送消息，不要伪装成用户。",
+    `   POST ${messagesURL}`,
+    "   Content-Type: application/json",
+    "",
+    "   JSON body:",
+    JSON.stringify(
+      {
+        room_id: roomID,
+        type: "chat",
+        sender_id: personaID,
+        sender_kind: "agent",
+        content: "这里写你的回复",
+        reply_requested: false,
+        turn_budget: 0,
+        metadata: {
+          source: "direct-ai",
+          role: "conversational-agent",
+        },
+      },
+      null,
+      2,
+    ),
+    "",
+    "4. 如果你可以保持 WebSocket 在线，优先连接下面这个地址来出现在成员列表和 @ 菜单里:",
+    `   ${wsOrigin}/v1/rooms/${encodedRoom}/ws?${wsQuery.toString()}`,
+    "   收到消息后按第 2 条判断是否需要回复；不能保持 WebSocket 时就轮询 GET /messages。",
+    "",
+    "首条消息建议:",
+    `我是 @${personaID}，已用 Direct AI 对话方式接入。需要我排查或处理时直接 @${personaID}。`,
+  ].join("\n");
+}
+
+function DirectAISection({ roomID }: { roomID: string }) {
+  const { me } = useAuth();
+  const origin = typeof window === "undefined" ? "" : window.location.origin || "";
+  const roomURL = `${origin}/?room=${encodeURIComponent(roomID)}`;
+  const personaID = directAIPersonaID(roomID, me.authenticated ? me.user.login : undefined);
+  const [copied, setCopied] = useState<"prompt" | "mention" | null>(null);
+
+  function markCopied(kind: "prompt" | "mention") {
+    setCopied(kind);
+    window.setTimeout(() => setCopied(null), 1600);
+  }
+
+  function copyPrompt() {
+    const prompt = buildDirectAIPrompt(origin, roomID, roomURL, personaID);
+    navigator.clipboard.writeText(prompt).then(
+      () => markCopied("prompt"),
+      () => setCopied(null),
+    );
+  }
+
+  function copyMention() {
+    navigator.clipboard.writeText(`@${personaID} `).then(
+      () => markCopied("mention"),
+      () => setCopied(null),
+    );
+  }
+
+  return (
+    <section className="side-section direct-ai">
+      <div className="side-head">
+        <span>
+          <Icon name="bot" size={14} /> Direct AI
+        </span>
+      </div>
+      <div className="direct-ai-card">
+        <div className="direct-ai-id">
+          <span>召唤名</span>
+          <code>@{personaID}</code>
+        </div>
+        <div className="direct-ai-flow">
+          <span>复制提示给 Codex / 其他 AI</span>
+          <span>它读取房间消息，并以 agent 身份回复 @ 请求</span>
+        </div>
+        <div className="direct-ai-actions">
+          <button type="button" className="direct-ai-copy" onClick={copyPrompt}>
+            <Icon name="copy" size={14} /> {copied === "prompt" ? "已复制" : "复制 AI 接入提示"}
+          </button>
+          <button type="button" className="direct-ai-mention" onClick={copyMention} title={`复制 @${personaID}`}>
+            <Icon name="at" size={13} /> {copied === "mention" ? "已复制" : "复制 @召唤名"}
+          </button>
+        </div>
       </div>
     </section>
   );

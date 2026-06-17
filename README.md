@@ -273,6 +273,28 @@ online control connection when present. Room-scoped tokens are rejected by
 other room WebSocket handshakes and do not receive server-managed agent config
 payloads such as saved API keys.
 
+### Direct AI conversational access
+
+Rooms also expose a lightweight **Direct AI** entry in the sidebar for cases
+where an AI agent should participate as a conversational persona without
+starting `agent-room bridge`. Click **复制 AI 接入提示** in a room to copy a
+ready-to-paste prompt containing:
+
+- the room URL and room ID;
+- a suggested `@ai-*` persona name to mention in chat;
+- the `GET /v1/rooms/{room}/messages?limit=80` history endpoint;
+- the `POST /v1/rooms/{room}/messages` payload for sending replies as
+  `sender_kind: "agent"`;
+- an optional room WebSocket URL using `client_kind=agent` when the AI runtime
+  can keep a live connection.
+
+The direct mode is intentionally message-level only: the AI reads recent room
+messages, replies only when it is `@mentioned` or targeted, and posts back with
+metadata like `source=direct-ai`. It does not receive Bridge-only runtime
+features such as local command execution, permission prompts, or server-managed
+provider configuration. Use Bridge when the agent must run local tools; use
+Direct AI when a hosted or external agent only needs to help through chat.
+
 ## Claude Provider
 
 The default bridge provider invokes Claude Code CLI in print mode:
