@@ -54,6 +54,54 @@ func TestGetSummaryReturnsStored(t *testing.T) {
 	}
 }
 
+func TestDeleteMessagesClearsHistoryAndSummary(t *testing.T) {
+	store := memory.NewStore()
+	svc := chat.NewService(store)
+	ctx := context.Background()
+	owner := "alice"
+	if err := store.CreateRoom(ctx, models.Room{
+		ID:         "r1",
+		OwnerLogin: &owner,
+	}); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+	if _, err := svc.Add(ctx, "r1", models.ChatMessage{ID: "a", Type: models.MessageTypeChat, Content: "hello"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := store.UpsertSummary(ctx, models.RoomSummary{RoomID: "r1", Summary: "digest here", CoveredSeq: 7}); err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+
+	secret := "0123456789abcdef0123456789abcdef"
+	cfg := config.Config{GitHub: config.GitHubConfig{
+		ClientID: "id", ClientSecret: "sec", SessionSecret: secret, CookieName: "agent_room_session",
+	}}
+	s := NewServer(cfg, svc, store, discardLogger())
+	s.WithSummary(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/rooms/r1/messages", nil)
+	req.AddCookie(signedCookie(t, secret, owner))
+	rr := httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("DELETE messages = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	msgs, err := store.List(ctx, "r1", 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("messages len = %d, want 0", len(msgs))
+	}
+	sum, err := store.GetSummary(ctx, "r1")
+	if err != nil {
+		t.Fatalf("get summary: %v", err)
+	}
+	if sum.Summary != "" || sum.CoveredSeq != 0 {
+		t.Fatalf("summary after delete = %#v, want empty", sum)
+	}
+}
+
 func TestListMessagesSearchFilters(t *testing.T) {
 	store := memory.NewStore()
 	svc := chat.NewService(store)

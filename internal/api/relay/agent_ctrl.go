@@ -35,11 +35,12 @@ func (s *Server) handleAgentCtrlWS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "agent_token required")
 		return
 	}
-	ownerLogin, ok := s.validateAgentToken(r.Context(), token)
+	resolved, ok := s.resolveAgentToken(r.Context(), token)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid or revoked agent token")
 		return
 	}
+	ownerLogin := resolved.OwnerLogin
 
 	agentID := strings.TrimSpace(r.URL.Query().Get("client_id"))
 	if agentID == "" {
@@ -95,13 +96,17 @@ func (s *Server) handleAgentCtrlWS(w http.ResponseWriter, r *http.Request) {
 				"connection_id": connID,
 			},
 		},
-		owner: ownerLogin,
+		owner:          ownerLogin,
+		tokenRoomID:    resolved.RoomID,
+		tokenTemporary: resolved.Temporary,
 	}
 
 	s.hub.register(c)
 
 	// After registration: push stored config and replay desired rooms.
-	go s.hub.pushAgentConfig(r.Context(), c, agentID)
+	if !resolved.Temporary {
+		go s.hub.pushAgentConfig(r.Context(), c, agentID)
+	}
 	go s.hub.replayDesiredRooms(r.Context(), c, agentID)
 
 	go c.writeLoop()
@@ -120,12 +125,18 @@ func (h *hub) replayDesiredRooms(ctx context.Context, c *client, agentID string)
 		return
 	}
 	for _, roomID := range rooms {
+		if c.tokenRoomID != "" && roomID != c.tokenRoomID {
+			continue
+		}
 		h.sendJoinRoom(c, agentID, roomID)
 	}
 }
 
 // sendJoinRoom sends a join_room directive on a specific control connection.
 func (h *hub) sendJoinRoom(c *client, agentID, roomID string) {
+	if c.tokenRoomID != "" && roomID != c.tokenRoomID {
+		return
+	}
 	msg := models.ChatMessage{
 		Type:       models.MessageTypeControl,
 		SenderKind: models.SenderKindSystem,
@@ -199,7 +210,7 @@ func (c *client) ctrlReadLoop(ctx context.Context, s *Server) {
 		if s.agents == nil {
 			continue
 		}
-		c.hub.reconcileRoomState(ctx, s.agents, agentID, msg.Metadata["rooms"])
+		c.hub.reconcileRoomState(ctx, s.agents, agentID, msg.Metadata["rooms"], c.tokenRoomID)
 	}
 }
 
@@ -209,12 +220,15 @@ func (c *client) ctrlReadLoop(ctx context.Context, s *Server) {
 // Rules (from issue spec §6):
 //   - desired has room, actual doesn't → send join_room
 //   - actual has room, desired doesn't → AddAgentRoom("bridge-local") — absorb, no leave_room
-func (h *hub) reconcileRoomState(ctx context.Context, agents AgentStore, agentID, roomsStr string) {
+func (h *hub) reconcileRoomState(ctx context.Context, agents AgentStore, agentID, roomsStr, allowedRoomID string) {
 	// Parse actual rooms from comma-separated list.
 	actual := make(map[string]struct{})
 	for _, r := range strings.Split(roomsStr, ",") {
 		r = strings.TrimSpace(r)
 		if r != "" {
+			if allowedRoomID != "" && r != allowedRoomID {
+				continue
+			}
 			actual[r] = struct{}{}
 		}
 	}
@@ -228,6 +242,9 @@ func (h *hub) reconcileRoomState(ctx context.Context, agents AgentStore, agentID
 	}
 	desiredSet := make(map[string]struct{}, len(desired))
 	for _, r := range desired {
+		if allowedRoomID != "" && r != allowedRoomID {
+			continue
+		}
 		desiredSet[r] = struct{}{}
 	}
 
@@ -241,6 +258,9 @@ func (h *hub) reconcileRoomState(ctx context.Context, agents AgentStore, agentID
 	h.mu.RUnlock()
 
 	for _, roomID := range desired {
+		if allowedRoomID != "" && roomID != allowedRoomID {
+			continue
+		}
 		if _, inActual := actual[roomID]; !inActual {
 			for _, c := range ctrlClients {
 				h.sendJoinRoom(c, agentID, roomID)

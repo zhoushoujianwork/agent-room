@@ -304,8 +304,9 @@ func (h *hub) sendConfigUpdate(agentID string, cfg models.AgentConfig) {
 	}
 	h.mu.RUnlock()
 	for _, c := range targets {
-		roomMsg := msg
-		roomMsg.RoomID = c.roomID
+		if c.tokenTemporary {
+			continue
+		}
 		h.sendConfigUpdateToClient(c, agentID, cfg)
 	}
 }
@@ -315,6 +316,9 @@ func (h *hub) sendConfigUpdate(agentID string, cfg models.AgentConfig) {
 // send queue. It NEVER goes through Publish, so it is neither persisted to room
 // history nor broadcast to other participants. The api key is never logged.
 func (h *hub) sendConfigUpdateToClient(c *client, agentID string, cfg models.AgentConfig) {
+	if c.tokenTemporary {
+		return
+	}
 	apiKey := ""
 	if strings.TrimSpace(cfg.APIKeyCipher) != "" {
 		plain, err := decryptSecret(h.secretKey, cfg.APIKeyCipher)
@@ -369,6 +373,9 @@ func (h *hub) sendToAgentCtrl(agentID string, msg models.ChatMessage) bool {
 	h.mu.RUnlock()
 	delivered := false
 	for _, c := range targets {
+		if !c.allowsControlMessage(msg) {
+			continue
+		}
 		select {
 		case c.send <- outgoing(msg):
 			delivered = true
@@ -377,6 +384,20 @@ func (h *hub) sendToAgentCtrl(agentID string, msg models.ChatMessage) bool {
 		}
 	}
 	return delivered
+}
+
+func (c *client) allowsControlMessage(msg models.ChatMessage) bool {
+	if c == nil || c.tokenRoomID == "" || msg.Type != models.MessageTypeControl {
+		return true
+	}
+	switch strings.TrimSpace(msg.Metadata["operation"]) {
+	case models.ControlOperationConfigUpdate:
+		return !c.tokenTemporary
+	case models.ControlOperationJoinRoom, models.ControlOperationLeaveRoom:
+		return strings.TrimSpace(msg.Metadata["room_id"]) == c.tokenRoomID
+	default:
+		return true
+	}
 }
 
 // closeAgentConnections closes every live connection whose participant ID

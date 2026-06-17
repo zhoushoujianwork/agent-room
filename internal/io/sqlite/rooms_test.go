@@ -74,6 +74,112 @@ func TestRoomRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUserRoomsRoundTrip(t *testing.T) {
+	store := openTempStore(t)
+	ctx := context.Background()
+
+	alice := "alice"
+	bob := "bob"
+	first := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	if err := store.CreateRoom(ctx, models.Room{
+		ID:         "room-a",
+		OwnerLogin: &alice,
+		CreatedAt:  first,
+	}); err != nil {
+		t.Fatalf("CreateRoom room-a: %v", err)
+	}
+	if err := store.CreateRoom(ctx, models.Room{
+		ID:         "room-b",
+		OwnerLogin: &bob,
+		CreatedAt:  first.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("CreateRoom room-b: %v", err)
+	}
+	if err := store.RecordUserRoom(ctx, alice, "room-a", first); err != nil {
+		t.Fatalf("RecordUserRoom room-a: %v", err)
+	}
+	if err := store.RecordUserRoom(ctx, alice, "room-b", second); err != nil {
+		t.Fatalf("RecordUserRoom room-b: %v", err)
+	}
+
+	rooms, err := store.ListUserRooms(ctx, alice, 0, 0)
+	if err != nil {
+		t.Fatalf("ListUserRooms: %v", err)
+	}
+	if len(rooms) != 2 {
+		t.Fatalf("len rooms = %d, want 2", len(rooms))
+	}
+	if rooms[0].ID != "room-b" || !rooms[0].LastOpenedAt.Equal(second) {
+		t.Fatalf("first room = %+v, want room-b at second timestamp", rooms[0])
+	}
+	if rooms[1].ID != "room-a" {
+		t.Fatalf("second room = %+v, want room-a", rooms[1])
+	}
+
+	if err := store.ForgetUserRoom(ctx, alice, "room-b"); err != nil {
+		t.Fatalf("ForgetUserRoom: %v", err)
+	}
+	rooms, err = store.ListUserRooms(ctx, alice, 0, 0)
+	if err != nil {
+		t.Fatalf("ListUserRooms after forget: %v", err)
+	}
+	if len(rooms) != 1 || rooms[0].ID != "room-a" {
+		t.Fatalf("rooms after forget = %+v, want only room-a", rooms)
+	}
+
+	if err := store.DeleteUserRoomsByRoom(ctx, "room-a"); err != nil {
+		t.Fatalf("DeleteUserRoomsByRoom: %v", err)
+	}
+	rooms, err = store.ListUserRooms(ctx, alice, 0, 0)
+	if err != nil {
+		t.Fatalf("ListUserRooms after delete by room: %v", err)
+	}
+	if len(rooms) != 0 {
+		t.Fatalf("rooms after delete by room = %+v, want empty", rooms)
+	}
+}
+
+func TestUserRoomsMigrationBackfillsOwnedRooms(t *testing.T) {
+	store := openTempStore(t)
+	ctx := context.Background()
+
+	owner := "Alice"
+	created := time.Date(2026, 6, 13, 11, 0, 0, 0, time.UTC)
+	if err := store.CreateRoom(ctx, models.Room{
+		ID:         "owned-room",
+		OwnerLogin: &owner,
+		CreatedAt:  created,
+	}); err != nil {
+		t.Fatalf("CreateRoom: %v", err)
+	}
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	rooms, err := store.ListUserRooms(ctx, "alice", 0, 0)
+	if err != nil {
+		t.Fatalf("ListUserRooms: %v", err)
+	}
+	if len(rooms) != 1 || rooms[0].ID != "owned-room" || !rooms[0].LastOpenedAt.Equal(created) {
+		t.Fatalf("backfilled rooms = %+v, want owned-room at created timestamp", rooms)
+	}
+
+	if err := store.ForgetUserRoom(ctx, "alice", "owned-room"); err != nil {
+		t.Fatalf("ForgetUserRoom: %v", err)
+	}
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("second Migrate: %v", err)
+	}
+	rooms, err = store.ListUserRooms(ctx, "alice", 0, 0)
+	if err != nil {
+		t.Fatalf("ListUserRooms after forget: %v", err)
+	}
+	if len(rooms) != 0 {
+		t.Fatalf("forgotten owner room was resurrected: %+v", rooms)
+	}
+}
+
 func TestAccessRequestRoundTrip(t *testing.T) {
 	store := openTempStore(t)
 	ctx := context.Background()

@@ -58,5 +58,8 @@ type AgentToken struct {
 	Note       string     `json:"note"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	RoomID     string     `json:"room_id,omitempty"`
+	Temporary  bool       `json:"temporary,omitempty"`
 	Revoked    bool       `json:"revoked"`
 }

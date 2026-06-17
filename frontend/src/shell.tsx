@@ -1012,9 +1012,6 @@ interface ComposerProps {
   ended: boolean;
   busy: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  agents: Participant[];
-  stickyTarget: string | null;
-  onSetStickyTarget: (value: string | null) => void;
   mentionOpen: boolean;
   mentionSelected: number;
   mentionOptions: MentionOption[];
@@ -1043,9 +1040,6 @@ export function Composer({
   ended,
   busy,
   textareaRef,
-  agents,
-  stickyTarget,
-  onSetStickyTarget,
   mentionOpen,
   mentionSelected,
   mentionOptions,
@@ -1091,11 +1085,7 @@ export function Composer({
       </footer>
     );
   }
-  const stickyActive = stickyTarget ? agents.some((a) => a.id === stickyTarget) : false;
-  const showStickyBar = agents.length > 0 || Boolean(stickyTarget);
-  const placeholder = stickyTarget
-    ? `发消息 — 默认召唤 @${stickyTarget}${stickyActive ? "" : "（已离开）"}，@其他人可临时改向`
-    : "发消息 — 用 @ 提及房间成员或召唤 agent";
+  const placeholder = "发消息 — 用 @ 提及房间成员或召唤 agent";
   return (
     <footer
       className={dragOver ? "composer composer-dragover" : "composer"}
@@ -1148,43 +1138,6 @@ export function Composer({
           </button>
         </div>
       )}
-      {showStickyBar && (
-        <div className="composer-sticky">
-          <span className="sticky-label">默认召唤</span>
-          <select
-            className="sticky-select"
-            value={stickyTarget ?? ""}
-            onChange={(event) => onSetStickyTarget(event.currentTarget.value || null)}
-            aria-label="选择默认召唤的 agent"
-          >
-            <option value="">不召唤（广播）</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                @{agent.id}
-                {agent.label && agent.label !== agent.id ? ` · ${agent.label}` : ""}
-              </option>
-            ))}
-            {stickyTarget && !stickyActive && (
-              <option value={stickyTarget}>@{stickyTarget}（已离开）</option>
-            )}
-          </select>
-          {stickyTarget && (
-            <span className={`sticky-chip${stickyActive ? "" : " stale"}`}>
-              <span className="sticky-dot" />@{stickyTarget}
-              {!stickyActive && <em>已离开</em>}
-              <button
-                type="button"
-                className="sticky-clear"
-                onClick={() => onSetStickyTarget(null)}
-                title="清除默认召唤"
-                aria-label="清除默认召唤"
-              >
-                ✕
-              </button>
-            </span>
-          )}
-        </div>
-      )}
       <div className="composer-rail">
         <div className="composer-box">
           {mentionOpen && (
@@ -1229,11 +1182,6 @@ export function Composer({
               {busy ? (
                 <>
                   <span className="composer-dot" /> agent 正在回复 · 输入会保留，回复后可发送
-                </>
-              ) : stickyTarget ? (
-                <>
-                  默认召唤 <kbd>@{stickyTarget}</kbd> · <kbd>@</kbd> 临时改向 ·{" "}
-                  <kbd>Enter</kbd> 发送
                 </>
               ) : (
                 <>
@@ -1280,7 +1228,7 @@ export function Composer({
 
 /* ── Confirm modal ────────────────────────────────────────────────── */
 
-export type ConfirmKind = "end" | "destroy";
+export type ConfirmKind = "end" | "clearHistory" | "clearSummary" | "destroy";
 
 const CONFIRM_COPY: Record<
   ConfirmKind,
@@ -1294,6 +1242,24 @@ const CONFIRM_COPY: Record<
       "房间会切换为只读:不能再发消息或运行命令,但完整历史与审计时间线都会保留,链接仍可查看。",
     cta: "结束会议",
     ctaClass: "btn-warn",
+  },
+  clearHistory: {
+    icon: "trash",
+    tone: "danger",
+    title: "清空历史?",
+    body:
+      "聊天消息、活动日志和滚动摘要会被删除且无法恢复。房间、成员、权限配置和链接会保留。",
+    cta: "清空历史",
+    ctaClass: "btn-danger-solid",
+  },
+  clearSummary: {
+    icon: "trash",
+    tone: "danger",
+    title: "清空摘要?",
+    body:
+      "当前滚动摘要会被删除且无法恢复。聊天历史会保留，后续新消息达到条件后可重新生成摘要。",
+    cta: "清空摘要",
+    ctaClass: "btn-danger-solid",
   },
   destroy: {
     icon: "alert",

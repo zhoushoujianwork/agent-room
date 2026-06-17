@@ -842,6 +842,7 @@ function quickStartSnippet(mode: QuickStartMode, os: QuickStartOS): string {
   const isWin = os === "windows";
   const binary = isWin ? ".\\agent-room.exe" : "agent-room";
   const cont = isWin ? "`" : "\\";
+  const relayArg = downloadOrigin() ? ` -relay ${downloadOrigin()}` : "";
   const installLines = isWin
     ? [
         "# 1. 下载 Bridge CLI (PowerShell 直接下载预编译 exe，不需要 Go)",
@@ -859,7 +860,7 @@ function quickStartSnippet(mode: QuickStartMode, os: QuickStartOS): string {
       "",
       "# 2. 启动 AI Agent — 本机的 Claude 加入房间对话",
       "#    需要先装好 Claude Code CLI 并登录",
-      `${binary} bridge`,
+      `${binary} bridge${relayArg}`,
     ].join("\n");
   }
 
@@ -868,8 +869,8 @@ function quickStartSnippet(mode: QuickStartMode, os: QuickStartOS): string {
     "",
     "# 2. 以 Slave (Executor) 模式启动 — 不跑 AI，等被 @ 时执行命令",
     "#    首次会自动生成 exec-token，缓存到 ~/.agent-room/exec-token",
-    `${binary} bridge ${cont}`,
-    `  --bridge-mode executor`,
+    `${binary} bridge${relayArg} ${cont}`,
+    `  -mode executor`,
   ].join("\n");
 }
 

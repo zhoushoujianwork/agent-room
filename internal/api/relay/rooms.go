@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,102 @@ import (
 	"agent-room/internal/io/sqlite"
 	"agent-room/internal/models"
 )
+
+const (
+	myRoomsDefaultLimit = 50
+	myRoomsMaxLimit     = 200
+)
+
+// handleMyRooms serves GET /v1/me/rooms. It returns the signed-in user's
+// durable room list (created or joined/opened), newest opened first.
+func (s *Server) handleMyRooms(w http.ResponseWriter, r *http.Request) {
+	if !s.authEnabled() {
+		writeError(w, http.StatusNotFound, "auth disabled")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	login := s.loginFromRequest(r)
+	if login == "" {
+		writeError(w, http.StatusForbidden, "sign in required")
+		return
+	}
+	if s.rooms == nil {
+		writeError(w, http.StatusInternalServerError, "no room storage configured")
+		return
+	}
+	limit := myRoomsDefaultLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		limit = min(n, myRoomsMaxLimit)
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "invalid offset")
+			return
+		}
+		offset = n
+	}
+	rooms, err := s.rooms.ListUserRooms(r.Context(), login, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, rooms)
+}
+
+// handleMyRoom serves PUT/DELETE /v1/me/rooms/:id. PUT records that the
+// signed-in user opened/joined this room; DELETE hides it from their list
+// without deleting the room itself.
+func (s *Server) handleMyRoom(w http.ResponseWriter, r *http.Request) {
+	if !s.authEnabled() {
+		writeError(w, http.StatusNotFound, "auth disabled")
+		return
+	}
+	roomID, ok := parseMyRoomPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "unknown route")
+		return
+	}
+	login := s.loginFromRequest(r)
+	if login == "" {
+		writeError(w, http.StatusForbidden, "sign in required")
+		return
+	}
+	if s.rooms == nil {
+		writeError(w, http.StatusInternalServerError, "no room storage configured")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		if _, err := s.ensureRoom(r.Context(), roomID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := s.rooms.RecordUserRoom(r.Context(), login, roomID, time.Now().UTC()); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	case http.MethodDelete:
+		if err := s.rooms.ForgetUserRoom(r.Context(), login, roomID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
 
 // handleRoomCRUD dispatches GET/PATCH/DELETE on /v1/rooms/:id.
 func (s *Server) handleRoomCRUD(w http.ResponseWriter, r *http.Request, roomID string) {
@@ -25,6 +122,18 @@ func (s *Server) handleRoomCRUD(w http.ResponseWriter, r *http.Request, roomID s
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func parseMyRoomPath(path string) (string, bool) {
+	rest := strings.TrimPrefix(path, "/v1/me/rooms/")
+	if rest == path {
+		return "", false
+	}
+	rest = strings.Trim(rest, "/")
+	if rest == "" || strings.Contains(rest, "/") {
+		return "", false
+	}
+	return rest, true
 }
 
 // handleGetRoom returns the room record, lazy-creating it if missing.
@@ -170,6 +279,10 @@ func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request, roomID
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+	}
+	if err := s.rooms.DeleteUserRoomsByRoom(r.Context(), roomID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	if err := s.rooms.DeleteRoom(r.Context(), roomID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

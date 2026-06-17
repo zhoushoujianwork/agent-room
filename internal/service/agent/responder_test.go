@@ -76,6 +76,131 @@ func TestResponderReplyDecrementsTurnBudget(t *testing.T) {
 	}
 }
 
+type scriptedProvider struct{ content string }
+
+func (scriptedProvider) Name() string { return "scripted" }
+
+func (p scriptedProvider) Complete(_ context.Context, _ models.ProviderRequest) (models.ProviderResponse, error) {
+	return models.ProviderResponse{Content: p.content}, nil
+}
+
+func TestResponderReplyRoutesMentionedAgentPeerWhenBudgetRemains(t *testing.T) {
+	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
+		content: "@carol please introduce your runtime",
+	})
+	history := []models.ChatMessage{
+		{Type: models.MessageTypePresence, SenderID: "alice", SenderKind: models.SenderKindAgent},
+		{Type: models.MessageTypePresence, SenderID: "carol", SenderKind: models.SenderKindAgent},
+	}
+	reply, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:         "demo",
+		SenderID:       "bob",
+		SenderKind:     models.SenderKindUser,
+		Content:        "talk to carol",
+		ReplyRequested: true,
+		TurnBudget:     2,
+	}, history, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if reply.TargetID != "carol" {
+		t.Fatalf("TargetID = %q, want carol", reply.TargetID)
+	}
+	if !reply.ReplyRequested || reply.TurnBudget != 1 {
+		t.Fatalf("turn budget = %d reply requested = %v, want 1/true", reply.TurnBudget, reply.ReplyRequested)
+	}
+}
+
+func TestResponderReplyNoReplyMarkerStopsPeerLoop(t *testing.T) {
+	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
+		content: "收到，待命中。\n\n[[no-reply]]",
+	})
+	reply, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:         "demo",
+		SenderID:       "carol",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "alice",
+		Content:        "收到，分工确认。",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}, nil, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if reply.Content != "收到，待命中。" {
+		t.Fatalf("content = %q, want marker stripped", reply.Content)
+	}
+	if reply.ReplyRequested {
+		t.Fatalf("ReplyRequested = true, want false")
+	}
+	if reply.TurnBudget != 11 {
+		t.Fatalf("TurnBudget = %d, want 11", reply.TurnBudget)
+	}
+}
+
+func TestResponderReplyToAgentPeerDoesNotContinueWithoutExplicitMention(t *testing.T) {
+	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
+		content: "收到，待命中。有活招呼。",
+	})
+	reply, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:         "demo",
+		SenderID:       "carol",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "alice",
+		Content:        "收到，分工确认。",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}, nil, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if reply.ReplyRequested {
+		t.Fatalf("ReplyRequested = true, want false")
+	}
+}
+
+func TestResponderReplyToAgentPeerContinuesWithExplicitMention(t *testing.T) {
+	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
+		content: "@carol 继续确认一下 Linux 侧结果",
+	})
+	reply, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:         "demo",
+		SenderID:       "carol",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "alice",
+		Content:        "收到，分工确认。",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}, nil, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if !reply.ReplyRequested {
+		t.Fatalf("ReplyRequested = false, want true")
+	}
+}
+
+func TestResponderReplyDoesNotRouteToExecutorMention(t *testing.T) {
+	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
+		content: "@exec-1 run hostname",
+	})
+	history := []models.ChatMessage{
+		{Type: models.MessageTypePresence, SenderID: "exec-1", SenderKind: models.SenderKindAgent, Metadata: map[string]string{"mode": "executor"}},
+	}
+	reply, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:     "demo",
+		SenderID:   "bob",
+		Content:    "ask executor",
+		TurnBudget: 2,
+	}, history, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if reply.TargetID != "bob" {
+		t.Fatalf("TargetID = %q, want bob", reply.TargetID)
+	}
+}
+
 func TestResolveAttachments(t *testing.T) {
 	msg := models.ChatMessage{
 		RoomID: "room1",

@@ -28,8 +28,16 @@ type AgentsTab = "agents" | "tokens";
 
 // startCommand 渲染「拿着这个 token 启动 bridge」的示例命令。token 明文只在
 // 生成弹层里出现一次，因此该命令也只在那一刻可复制。
-function startCommand(token: string): string {
-  return `AGENT_ROOM_AGENT_TOKEN=${token} agent-room bridge`;
+function currentRelayOrigin(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.origin || "";
+}
+
+function startCommand(token: string, mode: "agent" | "executor"): string {
+  const relay = currentRelayOrigin();
+  const relayArg = relay ? ` -relay ${relay}` : "";
+  const modeArg = mode === "executor" ? " -mode executor" : "";
+  return `AGENT_ROOM_AGENT_TOKEN=${token} agent-room bridge${relayArg}${modeArg}`;
 }
 
 export function AgentsPage({
@@ -659,7 +667,8 @@ function NewTokenDialog({
   onClose: () => void;
   onShowToast: (message: string) => void;
 }) {
-  const command = startCommand(token.token);
+  const agentCommand = startCommand(token.token, "agent");
+  const executorCommand = startCommand(token.token, "executor");
 
   function copyToken() {
     copyText(token.token).then(
@@ -668,9 +677,9 @@ function NewTokenDialog({
     );
   }
 
-  function copyCommand() {
+  function copyCommand(command: string, label: string) {
     copyText(command).then(
-      () => onShowToast("启动命令已复制"),
+      () => onShowToast(`${label} 启动命令已复制`),
       () => onShowToast("复制失败"),
     );
   }
@@ -701,16 +710,26 @@ function NewTokenDialog({
         </label>
 
         <label className="token-dialog-field">
-          <span>启动 bridge 示例命令</span>
+          <span>启动 AI Agent</span>
           <div className="token-dialog-copy">
-            <code>{command}</code>
-            <button type="button" className="btn btn-sm" onClick={copyCommand}>
+            <code>{agentCommand}</code>
+            <button type="button" className="btn btn-sm" onClick={() => copyCommand(agentCommand, "Agent")}>
+              <Icon name="copy" size={14} /> 复制
+            </button>
+          </div>
+        </label>
+
+        <label className="token-dialog-field">
+          <span>启动 Executor（不跑 AI，被 @ 时执行命令）</span>
+          <div className="token-dialog-copy">
+            <code>{executorCommand}</code>
+            <button type="button" className="btn btn-sm" onClick={() => copyCommand(executorCommand, "Executor")}>
               <Icon name="copy" size={14} /> 复制
             </button>
           </div>
         </label>
         <p className="home-fine">
-          需要指定房间时追加 <code>--room &lt;room_id&gt;</code>。
+          Agent 可不指定房间，后续从页面加入；Executor 需要房间，交互启动会询问，也可追加 <code>-room &lt;room_id&gt;</code>。
         </p>
 
         <div className="token-dialog-foot">

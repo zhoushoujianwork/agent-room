@@ -271,12 +271,14 @@ interface SummaryPanelProps {
   summary: RoomSummary | null;
   loading: boolean;
   onRefresh: () => void;
+  canManage?: boolean;
+  onClear?: () => void;
 }
 
 // SummaryPanel surfaces the relay's rolling LLM digest of the room, plus when
 // it was last regenerated. The summary is produced server-side every N
 // conversational messages (or on a time interval); the UI is read-only.
-export function SummaryPanel({ summary, loading, onRefresh }: SummaryPanelProps) {
+export function SummaryPanel({ summary, loading, onRefresh, canManage = false, onClear }: SummaryPanelProps) {
   const text = summary?.summary?.trim() || "";
   const updatedAt = summary?.updated_at || null;
   const ago = relativeAge(updatedAt);
@@ -295,16 +297,30 @@ export function SummaryPanel({ summary, loading, onRefresh }: SummaryPanelProps)
             <span>LLM 滚动生成的长期上下文,供 agent 与成员快速回顾</span>
           </div>
         </div>
-        <button
-          type="button"
-          className="icon-btn icon-btn-line"
-          onClick={onRefresh}
-          disabled={loading}
-          title="刷新摘要"
-          aria-label="刷新摘要"
-        >
-          <Icon name="refresh" size={15} className={loading ? "spin" : ""} />
-        </button>
+        <div className="summary-actions">
+          {canManage && onClear && (
+            <button
+              type="button"
+              className="icon-btn icon-btn-line"
+              onClick={onClear}
+              disabled={loading || !text}
+              title="清空摘要"
+              aria-label="清空摘要"
+            >
+              <Icon name="trash" size={15} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn icon-btn-line"
+            onClick={onRefresh}
+            disabled={loading}
+            title="刷新摘要"
+            aria-label="刷新摘要"
+          >
+            <Icon name="refresh" size={15} className={loading ? "spin" : ""} />
+          </button>
+        </div>
       </div>
 
       {text ? (
@@ -654,6 +670,7 @@ interface SettingsPanelProps {
   onTitleSave: (title: string) => Promise<void>;
   onToggleGated: (next: boolean) => Promise<void>;
   onEnd: () => void;
+  onClearHistory: () => void;
   onDestroy: () => void;
 }
 
@@ -663,6 +680,7 @@ export function SettingsPanel({
   onCopyURL,
   onToggleGated,
   onEnd,
+  onClearHistory,
   onDestroy,
 }: SettingsPanelProps) {
   const { me } = useAuth();
@@ -744,6 +762,15 @@ export function SettingsPanel({
         <h3>房间生命周期</h3>
         {canManage ? (
           <>
+            <div className="life-row">
+              <div className="life-text">
+                <strong>清空历史</strong>
+                <span>删除聊天、活动日志与滚动摘要，保留房间、成员和权限配置。</span>
+              </div>
+              <button type="button" className="btn btn-danger" onClick={onClearHistory}>
+                <Icon name="trash" size={14} /> 清空历史
+              </button>
+            </div>
             <div className="life-row">
               <div className="life-text">
                 <strong>结束会议</strong>

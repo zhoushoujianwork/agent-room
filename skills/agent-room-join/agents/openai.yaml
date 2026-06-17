@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Room Join"
+  short_description: "Join Agent Room with a temporary code"
+  default_prompt: "Use $agent-room-join to join my Agent Room from a temporary authorization code."

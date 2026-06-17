@@ -22,6 +22,7 @@ type Store struct {
 	rooms     map[string]models.Room
 	requests  map[string]models.AccessRequest
 	users     map[string]models.UserActivity
+	userRooms map[string]map[string]userRoomRecord
 	summaries map[string]models.RoomSummary
 	// attachments 以 roomID -> attachmentID 双键存,镜像 SQLite 的
 	// (room_id, id) 查询口径:不知道房间 id 拿不到字节。
@@ -46,10 +47,16 @@ func NewStore() *Store {
 		rooms:       make(map[string]models.Room),
 		requests:    make(map[string]models.AccessRequest),
 		users:       make(map[string]models.UserActivity),
+		userRooms:   make(map[string]map[string]userRoomRecord),
 		summaries:   make(map[string]models.RoomSummary),
 		attachments: make(map[string]map[string]models.Attachment),
 		msgSeq:      make(map[string]int64),
 	}
+}
+
+type userRoomRecord struct {
+	lastOpenedAt time.Time
+	hidden       bool
 }
 
 func (s *Store) Append(_ context.Context, message models.ChatMessage) error {
@@ -195,10 +202,107 @@ func (s *Store) ListUserActivities(_ context.Context) ([]models.UserActivity, er
 	return out, nil
 }
 
+func (s *Store) RecordUserRoom(_ context.Context, login, roomID string, openedAt time.Time) error {
+	login = canonicalUserRoomLogin(login)
+	roomID = strings.TrimSpace(roomID)
+	if login == "" || roomID == "" {
+		return nil
+	}
+	if openedAt.IsZero() {
+		openedAt = time.Now().UTC()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userRooms[login] == nil {
+		s.userRooms[login] = make(map[string]userRoomRecord)
+	}
+	s.userRooms[login][roomID] = userRoomRecord{lastOpenedAt: openedAt.UTC()}
+	return nil
+}
+
+func (s *Store) ForgetUserRoom(_ context.Context, login, roomID string) error {
+	login = canonicalUserRoomLogin(login)
+	roomID = strings.TrimSpace(roomID)
+	if login == "" || roomID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.rooms[roomID]; !ok {
+		return nil
+	}
+	if s.userRooms[login] == nil {
+		s.userRooms[login] = make(map[string]userRoomRecord)
+	}
+	rec := s.userRooms[login][roomID]
+	rec.hidden = true
+	if rec.lastOpenedAt.IsZero() {
+		rec.lastOpenedAt = time.Now().UTC()
+	}
+	s.userRooms[login][roomID] = rec
+	return nil
+}
+
+func (s *Store) ListUserRooms(_ context.Context, login string, limit, offset int) ([]models.UserRoom, error) {
+	login = canonicalUserRoomLogin(login)
+	if login == "" {
+		return []models.UserRoom{}, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	records := s.userRooms[login]
+	out := make([]models.UserRoom, 0, len(records))
+	for roomID, rec := range records {
+		if rec.hidden {
+			continue
+		}
+		room, ok := s.rooms[roomID]
+		if !ok {
+			continue
+		}
+		lastOpenedAt := rec.lastOpenedAt
+		if lastOpenedAt.IsZero() {
+			lastOpenedAt = room.CreatedAt
+		}
+		out = append(out, models.UserRoom{
+			Room:         room,
+			LastOpenedAt: lastOpenedAt,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].LastOpenedAt.Equal(out[j].LastOpenedAt) {
+			return out[i].LastOpenedAt.After(out[j].LastOpenedAt)
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if offset > 0 {
+		if offset >= len(out) {
+			return []models.UserRoom{}, nil
+		}
+		out = out[offset:]
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (s *Store) DeleteRoom(_ context.Context, roomID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.rooms, roomID)
+	return nil
+}
+
+func (s *Store) DeleteUserRoomsByRoom(_ context.Context, roomID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for login, rooms := range s.userRooms {
+		delete(rooms, roomID)
+		if len(rooms) == 0 {
+			delete(s.userRooms, login)
+		}
+	}
 	return nil
 }
 
@@ -304,4 +408,8 @@ func (s *Store) findRequester(roomID, login, anonID string, status models.Access
 		return nil, ErrNotFound
 	}
 	return hit, nil
+}
+
+func canonicalUserRoomLogin(login string) string {
+	return strings.ToLower(strings.TrimSpace(login))
 }

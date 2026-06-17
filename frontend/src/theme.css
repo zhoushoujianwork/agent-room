@@ -1,101 +1,43 @@
-/* Agent Room — theme tokens (paper default, operator/signal alternates) */
+/* Agent Room — maps the live Daboluo Dot-Matrix tokens to app primitives. */
 
 :root {
-  --accent-h: 152;
-  --accent: oklch(0.76 0.15 var(--accent-h));
-  --accent-bright: oklch(0.84 0.13 var(--accent-h));
-  --accent-soft: oklch(0.76 0.15 var(--accent-h) / 0.16);
-  --accent-faint: oklch(0.76 0.15 var(--accent-h) / 0.08);
-  --accent-line: oklch(0.76 0.15 var(--accent-h) / 0.4);
-  --accent-ink: oklch(0.18 0.03 var(--accent-h));
+  --accent-bright: var(--accent);
+  --accent-faint: color-mix(in srgb, var(--accent) 9%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 54%, transparent);
+  --accent-ink: var(--bg);
 
-  --r-xs: 6px; --r-sm: 8px; --r-md: 11px; --r-lg: 15px; --r-xl: 20px;
+  --bg-2: color-mix(in srgb, var(--bg) 78%, var(--panel));
+  --surface: var(--panel);
+  --surface-2: var(--panel-strong);
+  --surface-3: color-mix(in srgb, var(--panel-strong) 82%, var(--lit));
+  --line: var(--ghost);
+  --line-soft: color-mix(in srgb, var(--ghost) 58%, transparent);
+  --ink: var(--lit);
+  --muted: var(--dim);
+  --faint: color-mix(in srgb, var(--dim) 72%, var(--bg));
+  --danger: var(--err);
+  --danger-soft: color-mix(in srgb, var(--err) 16%, transparent);
+  --warn: color-mix(in srgb, var(--accent) 62%, var(--lit));
+  --warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
+  --term-bg: var(--bg);
+  --term-bar: var(--panel);
+  --term-ink: var(--lit);
+  --shadow: 0 16px 44px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(247, 255, 255, 0.10);
+  --shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(247, 255, 255, 0.08);
+
+  --r-xs: 6px; --r-sm: 7px; --r-md: var(--radius); --r-lg: var(--radius); --r-xl: var(--radius);
   --pad: 16px;
   --rail: 940px;
-  --font-ui: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", var(--font-ui);
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-/* Operator (dark) */
-[data-theme="operator"] {
-  --bg: oklch(0.18 0.012 175);
-  --bg-2: oklch(0.16 0.012 175);
-  --surface: oklch(0.22 0.013 175);
-  --surface-2: oklch(0.255 0.014 175);
-  --surface-3: oklch(0.3 0.015 175);
-  --line: oklch(1 0 0 / 0.09);
-  --line-soft: oklch(1 0 0 / 0.05);
-  --ink: oklch(0.96 0.006 175);
-  --muted: oklch(0.72 0.012 175);
-  --faint: oklch(0.56 0.012 175);
-  --danger: oklch(0.7 0.16 25);
-  --danger-soft: oklch(0.7 0.16 25 / 0.16);
-  --warn: oklch(0.82 0.13 75);
-  --warn-soft: oklch(0.82 0.13 75 / 0.16);
-  --ok: var(--accent);
-  --term-bg: oklch(0.155 0.012 175);
-  --term-bar: oklch(0.205 0.013 175);
-  --term-ink: oklch(0.92 0.01 175);
-  --shadow: 0 18px 40px oklch(0.1 0.01 175 / 0.5);
-  --shadow-sm: 0 6px 18px oklch(0.1 0.01 175 / 0.4);
+  --font-ui: var(--mono);
+  --font-display: var(--mono);
+  --font-mono: var(--mono);
   color-scheme: dark;
 }
 
-/* Signal (high-contrast dark) */
+[data-theme="paper"],
+[data-theme="operator"],
 [data-theme="signal"] {
-  --bg: oklch(0.13 0.008 260);
-  --bg-2: oklch(0.1 0.008 260);
-  --surface: oklch(0.17 0.01 260);
-  --surface-2: oklch(0.21 0.012 260);
-  --surface-3: oklch(0.26 0.014 260);
-  --line: oklch(1 0 0 / 0.13);
-  --line-soft: oklch(1 0 0 / 0.07);
-  --ink: oklch(0.99 0 0);
-  --muted: oklch(0.76 0.012 260);
-  --faint: oklch(0.58 0.012 260);
-  --danger: oklch(0.72 0.2 25);
-  --danger-soft: oklch(0.72 0.2 25 / 0.2);
-  --warn: oklch(0.85 0.16 80);
-  --warn-soft: oklch(0.85 0.16 80 / 0.2);
-  --ok: var(--accent);
-  --term-bg: oklch(0.1 0.008 260);
-  --term-bar: oklch(0.18 0.01 260);
-  --term-ink: oklch(0.96 0.01 260);
-  --shadow: 0 20px 48px oklch(0.05 0 0 / 0.65);
-  --shadow-sm: 0 8px 22px oklch(0.05 0 0 / 0.5);
   color-scheme: dark;
-}
-
-/* Paper (light) — default */
-[data-theme="paper"] {
-  --accent: oklch(0.55 0.15 var(--accent-h));
-  --accent-bright: oklch(0.48 0.16 var(--accent-h));
-  --accent-soft: oklch(0.55 0.14 var(--accent-h) / 0.12);
-  --accent-faint: oklch(0.55 0.14 var(--accent-h) / 0.06);
-  --accent-line: oklch(0.55 0.14 var(--accent-h) / 0.3);
-  --accent-ink: #fff;
-  --bg: oklch(0.97 0.006 150);
-  --bg-2: oklch(0.985 0.004 150);
-  --surface: oklch(1 0 0);
-  --surface-2: oklch(0.975 0.005 150);
-  --surface-3: oklch(0.95 0.006 150);
-  --line: oklch(0.3 0.02 165 / 0.12);
-  --line-soft: oklch(0.3 0.02 165 / 0.07);
-  --ink: oklch(0.26 0.018 175);
-  --muted: oklch(0.48 0.014 175);
-  --faint: oklch(0.62 0.012 175);
-  --danger: oklch(0.55 0.18 25);
-  --danger-soft: oklch(0.55 0.18 25 / 0.1);
-  --warn: oklch(0.6 0.13 65);
-  --warn-soft: oklch(0.7 0.13 70 / 0.14);
-  --ok: var(--accent);
-  --term-bg: oklch(0.21 0.013 175);
-  --term-bar: oklch(0.26 0.014 175);
-  --term-ink: oklch(0.93 0.01 175);
-  --shadow: 0 18px 44px oklch(0.4 0.02 165 / 0.12);
-  --shadow-sm: 0 6px 18px oklch(0.4 0.02 165 / 0.08);
-  color-scheme: light;
 }
 
 [data-density="compact"] { --pad: 12px; }
@@ -105,7 +47,7 @@
 html, body, #root { height: 100%; margin: 0; }
 body {
   background: var(--bg);
-  color: var(--ink);
+  color: var(--lit);
   font: 14px/1.5 var(--font-ui);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -143,8 +85,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .chip-ok { background: var(--accent-soft); color: var(--accent-bright); }
 .chip-warn { background: var(--warn-soft); color: var(--warn); }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
-.chip-user { background: oklch(0.7 0.13 255 / 0.18); color: oklch(0.8 0.1 255); }
-[data-theme="paper"] .chip-user { color: oklch(0.5 0.15 255); }
+.chip-user { background: var(--accent-soft); color: var(--accent); }
 
 .icon-btn {
   display: inline-grid; place-items: center; flex: 0 0 auto;

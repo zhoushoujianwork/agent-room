@@ -84,6 +84,10 @@ export interface Room {
   created_at: string;
 }
 
+export interface UserRoom extends Room {
+  last_opened_at: string;
+}
+
 /* ── Admin users ─────────────────────────────────────────────────── */
 
 export interface AdminUser {

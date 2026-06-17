@@ -15,6 +15,14 @@ type Room struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// UserRoom is the signed-in user's durable "my rooms" record. It embeds the
+// room metadata and adds the user's own last-opened timestamp so clients can
+// sort recently created/joined rooms consistently across browsers.
+type UserRoom struct {
+	Room
+	LastOpenedAt time.Time `json:"last_opened_at"`
+}
+
 // AccessRequestStatus enumerates the lifecycle of a join request.
 type AccessRequestStatus string
 

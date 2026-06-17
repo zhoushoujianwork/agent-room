@@ -81,6 +81,19 @@ func migrate(db *sql.DB) error {
             login_count   INTEGER NOT NULL DEFAULT 0
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_user_activity_last_login ON user_activity(last_login_at);`,
+		`CREATE TABLE IF NOT EXISTS user_rooms (
+            login          TEXT NOT NULL,
+            room_id        TEXT NOT NULL,
+            last_opened_at TEXT NOT NULL,
+            hidden         INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (login, room_id),
+            FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+        );`,
+		`CREATE INDEX IF NOT EXISTS idx_user_rooms_login_opened ON user_rooms(login, hidden, last_opened_at);`,
+		`INSERT OR IGNORE INTO user_rooms (login, room_id, last_opened_at, hidden)
+            SELECT lower(owner_login), id, created_at, 0
+            FROM rooms
+            WHERE owner_login IS NOT NULL AND owner_login <> '';`,
 		`CREATE TABLE IF NOT EXISTS agents (
             agent_id     TEXT PRIMARY KEY,
             owner_login  TEXT NOT NULL,
@@ -97,6 +110,9 @@ func migrate(db *sql.DB) error {
             note         TEXT NOT NULL DEFAULT '',
             created_at   TEXT NOT NULL,
             last_used_at TEXT NOT NULL DEFAULT '',
+            expires_at   TEXT NOT NULL DEFAULT '',
+            room_id      TEXT NOT NULL DEFAULT '',
+            temporary    INTEGER NOT NULL DEFAULT 0,
             revoked      INTEGER NOT NULL DEFAULT 0
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_agent_tokens_owner ON agent_tokens(owner_login);`,
@@ -121,6 +137,49 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("sqlite migrate: %w", err)
 		}
+	}
+	for _, col := range []struct {
+		name string
+		ddl  string
+	}{
+		{name: "expires_at", ddl: `expires_at TEXT NOT NULL DEFAULT ''`},
+		{name: "room_id", ddl: `room_id TEXT NOT NULL DEFAULT ''`},
+		{name: "temporary", ddl: `temporary INTEGER NOT NULL DEFAULT 0`},
+	} {
+		if err := ensureColumn(db, "agent_tokens", col.name, col.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureColumn(db *sql.DB, table, column, ddl string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return fmt.Errorf("sqlite inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			typeName  string
+			notNull   int
+			defaultTo sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &typeName, &notNull, &defaultTo, &pk); err != nil {
+			return fmt.Errorf("sqlite scan %s column: %w", table, err)
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("sqlite inspect %s columns: %w", table, err)
+	}
+	if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + ddl); err != nil {
+		return fmt.Errorf("sqlite add %s.%s: %w", table, column, err)
 	}
 	return nil
 }

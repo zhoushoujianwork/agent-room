@@ -168,9 +168,100 @@ func (s *Store) ListUserActivities(ctx context.Context) ([]models.UserActivity, 
 	return out, nil
 }
 
+func (s *Store) RecordUserRoom(ctx context.Context, login, roomID string, openedAt time.Time) error {
+	login = canonicalUserRoomLogin(login)
+	roomID = strings.TrimSpace(roomID)
+	if login == "" || roomID == "" {
+		return nil
+	}
+	if openedAt.IsZero() {
+		openedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+        INSERT INTO user_rooms (login, room_id, last_opened_at, hidden)
+        VALUES (?, ?, ?, 0)
+        ON CONFLICT(login, room_id) DO UPDATE SET
+            last_opened_at = excluded.last_opened_at,
+            hidden = 0`,
+		login,
+		roomID,
+		openedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("sqlite record user room: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ForgetUserRoom(ctx context.Context, login, roomID string) error {
+	login = canonicalUserRoomLogin(login)
+	roomID = strings.TrimSpace(roomID)
+	if login == "" || roomID == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+        INSERT INTO user_rooms (login, room_id, last_opened_at, hidden)
+        SELECT ?, id, ?, 1 FROM rooms WHERE id = ?
+        ON CONFLICT(login, room_id) DO UPDATE SET hidden = 1`,
+		login,
+		time.Now().UTC().Format(time.RFC3339Nano),
+		roomID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqlite forget user room: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListUserRooms(ctx context.Context, login string, limit, offset int) ([]models.UserRoom, error) {
+	login = canonicalUserRoomLogin(login)
+	if login == "" {
+		return []models.UserRoom{}, nil
+	}
+	query := `
+        SELECT r.id, r.owner_login, r.title, r.gated, r.ended, r.created_at, ur.last_opened_at
+        FROM user_rooms ur
+        JOIN rooms r ON r.id = ur.room_id
+        WHERE ur.login = ? AND ur.hidden = 0
+        ORDER BY ur.last_opened_at DESC, r.created_at DESC`
+	args := []any{login}
+	if limit > 0 || offset > 0 {
+		if limit <= 0 {
+			limit = -1
+		}
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite list user rooms: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]models.UserRoom, 0)
+	for rows.Next() {
+		room, err := scanUserRoom(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, room)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sqlite list user rooms rows: %w", err)
+	}
+	return out, nil
+}
+
 func (s *Store) DeleteRoom(ctx context.Context, roomID string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM rooms WHERE id = ?`, roomID); err != nil {
 		return fmt.Errorf("sqlite delete room: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteUserRoomsByRoom(ctx context.Context, roomID string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM user_rooms WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("sqlite delete user_rooms: %w", err)
 	}
 	return nil
 }
@@ -346,6 +437,47 @@ func scanRoom(s scanner) (*models.Room, error) {
 	return room, nil
 }
 
+func scanUserRoom(s scanner) (models.UserRoom, error) {
+	var (
+		id            string
+		owner         sql.NullString
+		title         sql.NullString
+		gated         int
+		ended         int
+		createdRaw    string
+		lastOpenedRaw string
+	)
+	if err := s.Scan(&id, &owner, &title, &gated, &ended, &createdRaw, &lastOpenedRaw); err != nil {
+		return models.UserRoom{}, fmt.Errorf("sqlite scan user_room: %w", err)
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, createdRaw)
+	if err != nil {
+		return models.UserRoom{}, fmt.Errorf("sqlite parse user_room created_at %q: %w", createdRaw, err)
+	}
+	lastOpenedAt, err := time.Parse(time.RFC3339Nano, lastOpenedRaw)
+	if err != nil {
+		return models.UserRoom{}, fmt.Errorf("sqlite parse user_room last_opened_at %q: %w", lastOpenedRaw, err)
+	}
+	room := models.UserRoom{
+		Room: models.Room{
+			ID:        id,
+			Gated:     gated != 0,
+			Ended:     ended != 0,
+			CreatedAt: createdAt,
+		},
+		LastOpenedAt: lastOpenedAt,
+	}
+	if owner.Valid {
+		v := owner.String
+		room.OwnerLogin = &v
+	}
+	if title.Valid {
+		v := title.String
+		room.Title = &v
+	}
+	return room, nil
+}
+
 func scanAccessRequest(s scanner) (*models.AccessRequest, error) {
 	var (
 		id         string
@@ -458,4 +590,8 @@ func nullablePersistence(p *models.AccessRequestPersistence) any {
 		return nil
 	}
 	return string(*p)
+}
+
+func canonicalUserRoomLogin(login string) string {
+	return strings.ToLower(strings.TrimSpace(login))
 }

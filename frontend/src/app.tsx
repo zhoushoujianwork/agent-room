@@ -17,6 +17,7 @@ import type {
   Participant,
   Room,
   RoomSummary,
+  UserRoom,
 } from "./types";
 import {
   cleanRoom,
@@ -29,9 +30,13 @@ import {
 import {
   createAccessRequest,
   createRoom,
+  clearRoomHistory,
+  clearRoomSummary,
   decideAccessRequest,
   deleteRoom,
+  forgetMyRoom,
   getRoom,
+  listMyRooms,
   listAccessRequests,
   listAllRooms,
   loadAdminUsers,
@@ -41,6 +46,7 @@ import {
   loadSummary,
   patchRoom,
   postMessage,
+  rememberRoom,
   uploadAttachment,
 } from "./api";
 import { AuthProvider, isAdmin as isAdminMe, isOwnerOf, ThemeProvider, useAuth, useTheme } from "./auth";
@@ -175,17 +181,20 @@ function upsertRoomRecord(records: RoomRecord[], room: string, title?: string | 
   return saveRoomRecords([nextRecord, ...records.filter((item) => item.room !== nextRoom)]);
 }
 
-function roomRecordURL(record: RoomRecord): string {
-  return `${window.location.origin}${roomPath(record.room)}`;
+function roomRecordsFromUserRooms(rooms: UserRoom[]): RoomRecord[] {
+  return rooms
+    .map((room) => ({
+      room: cleanRoom(room.room_id),
+      createdAt: room.created_at,
+      lastOpenedAt: room.last_opened_at || room.created_at,
+      title: room.title ?? undefined,
+    }))
+    .sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt))
+    .slice(0, 30);
 }
 
-/* ── Sticky target (default agent to summon) ───────────────────────── */
-// Stored per room so a refresh/reconnect keeps the same default summon
-// target. Value semantics: an agent id = summon that agent; "" = the user
-// explicitly chose broadcast (suppresses auto-select); absent key = never
-// chosen (a single-agent room may auto-select).
-function stickyTargetKey(room: string): string {
-  return `agent-room.sticky-target.${cleanRoom(room)}`;
+function roomRecordURL(record: RoomRecord): string {
+  return `${window.location.origin}${roomPath(record.room)}`;
 }
 
 /* ── Mention helpers (ported from previous main.tsx) ───────────────── */
@@ -334,7 +343,6 @@ function InnerApp() {
   const [uploadingCount, setUploadingCount] = useState(0);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [dismissedMentions, setDismissedMentions] = useState<Set<string>>(() => new Set());
-  const [stickyTarget, setStickyTarget] = useState<string | null>(null);
   const [mention, setMention] = useState<MentionState>(closedMention());
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [toast, setToast] = useState("");
@@ -479,6 +487,21 @@ function InnerApp() {
     }
   }, [appView, authLoading, hasSignedIdentity]);
 
+  useEffect(() => {
+    if (authLoading || !me.authenticated) return;
+    if (appView !== "rooms" && appView !== "room") return;
+    let cancelled = false;
+    listMyRooms()
+      .then((rooms) => {
+        if (cancelled) return;
+        setRoomRecords(saveRoomRecords(roomRecordsFromUserRooms(rooms)));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [appView, authLoading, me]);
+
   /* ── Hydrate room metadata ─────────────────────────────────────── */
   useEffect(() => {
     if (appView !== "room" || !roomID) return;
@@ -505,6 +528,12 @@ function InnerApp() {
       cancelled = true;
     };
   }, [appView, roomID]);
+
+  useEffect(() => {
+    if (appView !== "room" || !roomID || !room || !me.authenticated) return;
+    if (room.gated && !canManage && guestStatus !== "approved") return;
+    rememberRoom(roomID).catch(() => undefined);
+  }, [appView, canManage, guestStatus, me, room, roomID]);
 
   /* ── URL sync ─────────────────────────────────────────────────── */
   useEffect(() => {
@@ -817,34 +846,6 @@ function InnerApp() {
     localStorage.setItem("agent-room.term-open", next ? "1" : "0");
   }
 
-  // Hydrate the stored default target whenever the room changes.
-  useEffect(() => {
-    if (!roomID) {
-      setStickyTarget(null);
-      return;
-    }
-    const stored = localStorage.getItem(stickyTargetKey(roomID));
-    setStickyTarget(stored && stored.length ? stored : null);
-  }, [roomID]);
-
-  const updateStickyTarget = useCallback(
-    (value: string | null) => {
-      setStickyTarget(value);
-      if (!roomID) return;
-      // Persist "" for an explicit clear so auto-select won't re-fire.
-      localStorage.setItem(stickyTargetKey(roomID), value ?? "");
-    },
-    [roomID],
-  );
-
-  // Auto-select when the room has exactly one agent and the user has never
-  // made a choice for it. An explicit clear stores "" so this stays inert.
-  useEffect(() => {
-    if (!roomID || stickyTarget || agents.length !== 1) return;
-    if (localStorage.getItem(stickyTargetKey(roomID)) !== null) return;
-    updateStickyTarget(agents[0].id);
-  }, [roomID, agents, stickyTarget, updateStickyTarget]);
-
   /* ── Composer handlers ─────────────────────────────────────────── */
 
   // 附件随房间走:切房间时丢弃别的房间里没发出去的图(字节已在 relay,但
@@ -957,7 +958,22 @@ function InnerApp() {
 
   function startReply(message: ChatMessage) {
     setReplyTo(message);
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    const id = message.sender_id?.trim();
+    if (id && id !== viewerID) {
+      const mentionText = `@${id} `;
+      setContent((current) => {
+        const trimmedStart = current.trimStart();
+        if (trimmedStart.startsWith(mentionText) || trimmedStart.startsWith(`@${id}\n`)) {
+          return current;
+        }
+        return current.trim().length > 0 ? `${mentionText}${current}` : mentionText;
+      });
+    }
+    window.requestAnimationFrame(() => {
+      const area = textareaRef.current;
+      area?.focus();
+      if (area) area.setSelectionRange(area.value.length, area.value.length);
+    });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1028,10 +1044,9 @@ function InnerApp() {
       showToast("图片还在上传中…");
       return;
     }
-    // Explicit @mention always wins; otherwise fall back to the room's
-    // default summon target so the user doesn't have to @ every time.
-    const targetID = extractMentionTarget(text) || stickyTarget;
+    const targetID = extractMentionTarget(text);
     const hasAgentTarget = Boolean(targetID && agents.some((agent) => agent.id === targetID));
+    const turnBudget = hasAgentTarget ? (agents.length > 1 ? 50 : 1) : 0;
     const metadata: Record<string, string> = {
       source: "web",
       connection_id: viewerID,
@@ -1060,7 +1075,7 @@ function InnerApp() {
       target_id: targetID || undefined,
       content: text,
       reply_requested: hasAgentTarget,
-      turn_budget: hasAgentTarget ? 1 : 0,
+      turn_budget: turnBudget,
       metadata,
     };
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1316,6 +1331,9 @@ function InnerApp() {
 
   function forgetRoomRecord(rid: string) {
     setRoomRecords((records) => saveRoomRecords(records.filter((record) => record.room !== rid)));
+    if (me.authenticated) {
+      forgetMyRoom(rid).catch(() => showToast("本地已移除，云端同步失败"));
+    }
     showToast("Room removed from your list");
   }
 
@@ -1364,6 +1382,42 @@ function InnerApp() {
     } catch {
       showToast("销毁失败");
     }
+  }
+
+  async function clearHistory() {
+    if (!roomID) return;
+    try {
+      await clearRoomHistory(roomID);
+      setMessages([]);
+      setSummary(null);
+      setReplyTo(null);
+      setDismissedMentions(new Set());
+      setHasMore(false);
+      setConfirm(null);
+      endAwait();
+      showToast("历史记录已清空");
+    } catch {
+      showToast("清空历史失败");
+    }
+  }
+
+  async function clearSummary() {
+    if (!roomID) return;
+    try {
+      await clearRoomSummary(roomID);
+      setSummary(null);
+      setConfirm(null);
+      showToast("摘要已清空");
+    } catch {
+      showToast("清空摘要失败");
+    }
+  }
+
+  function confirmAction() {
+    if (confirm === "destroy") return destroyRoom();
+    if (confirm === "end") return endRoom();
+    if (confirm === "clearHistory") return clearHistory();
+    if (confirm === "clearSummary") return clearSummary();
   }
 
   function copyMention(id: string) {
@@ -1666,9 +1720,6 @@ function InnerApp() {
                 ended={room.ended}
                 busy={awaitingReply}
                 textareaRef={textareaRef}
-                agents={agents}
-                stickyTarget={stickyTarget}
-                onSetStickyTarget={updateStickyTarget}
                 mentionOpen={mention.active}
                 mentionSelected={mention.selected}
                 mentionOptions={mentionOptions}
@@ -1707,6 +1758,8 @@ function InnerApp() {
                 summary={summary}
                 loading={summaryLoading}
                 onRefresh={refreshSummary}
+                canManage={canManage}
+                onClear={() => setConfirm("clearSummary")}
               />
             </section>
           )}
@@ -1729,6 +1782,7 @@ function InnerApp() {
                 onTitleSave={renameRoom}
                 onToggleGated={toggleGated}
                 onEnd={() => setConfirm("end")}
+                onClearHistory={() => setConfirm("clearHistory")}
                 onDestroy={() => setConfirm("destroy")}
               />
             </section>
@@ -1746,7 +1800,7 @@ function InnerApp() {
         <ConfirmModal
           kind={confirm}
           onCancel={() => setConfirm(null)}
-          onConfirm={confirm === "destroy" ? destroyRoom : endRoom}
+          onConfirm={confirmAction}
         />
       )}
       {!gatedBlocked && (

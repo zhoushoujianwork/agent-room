@@ -16,7 +16,7 @@
 /* ── chat bubble ─────────────────────────────────────────────────── */
 .bubble-row { display: flex; gap: 11px; align-items: flex-start; max-width: 100%; }
 .bubble-row.mine { flex-direction: row; justify-content: flex-end; }
-.bubble-row.mentioned .bubble { box-shadow: 0 0 0 1px var(--accent-line), 0 12px 34px rgba(54, 223, 183, 0.12); }
+.bubble-row.mentioned .bubble { box-shadow: 0 0 0 1px var(--accent-line), 0 12px 34px var(--accent-soft); }
 .bubble-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; max-width: min(660px, 82%); }
 .bubble-row.mine .bubble-col { align-items: flex-end; }
 .bubble-meta { display: inline-flex; align-items: center; gap: 8px; padding: 0 2px; flex-wrap: wrap; }
@@ -260,6 +260,7 @@
 /* ── summary tab ─────────────────────────────────────────────────── */
 .summary-panel { max-width: 760px; }
 .summary-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.summary-actions { display: inline-flex; align-items: center; gap: 8px; }
 .summary-head-title { display: flex; align-items: center; gap: 11px; }
 .summary-head-title > div { display: flex; flex-direction: column; gap: 2px; }
 .summary-head-title strong { font-size: 15px; }
@@ -408,3 +409,578 @@
 .appr-patterns code { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent-bright);
   background: var(--accent-faint); border: 1px solid var(--accent-line); padding: 1px 7px;
   border-radius: 999px; }
+
+/* ── Dot-Matrix room skin ────────────────────────────────────────── */
+.shell {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) .62px, transparent .76px);
+  background-size: var(--pitch) var(--pitch);
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
+.shell .brandmark {
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--accent-line), 0 0 24px var(--accent-soft);
+}
+
+.shell .side-brand-text strong {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-bottom: 2px dotted var(--accent);
+  padding-bottom: 3px;
+}
+
+.shell .side-brand-text span,
+.shell .room-head-sub,
+.shell .bubble-role,
+.shell .bubble-meta time,
+.shell .evt-detail,
+.shell .evt-time {
+  color: var(--faint);
+}
+
+.shell .sidebar,
+.shell .room-main,
+.shell .messages,
+.shell .composer {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) .62px, transparent .76px);
+  background-size: var(--pitch) var(--pitch);
+}
+
+.shell .sidebar {
+  border-right-color: var(--line);
+  box-shadow: inset -1px 0 0 rgba(241, 251, 252, 0.07);
+}
+
+.shell .room-head,
+.shell .composer {
+  background: rgba(5, 9, 12, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.shell .room-head {
+  border-bottom-color: var(--line);
+}
+
+.shell .composer {
+  border-top-color: var(--line);
+}
+
+.shell .room-title,
+.shell .room-head-title h1 {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  letter-spacing: 0;
+}
+
+.shell .room-title-input,
+.shell .composer-box textarea {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+
+.shell .side-head {
+  color: var(--muted);
+  letter-spacing: 0.14em;
+}
+
+.shell .side-head > span::before,
+.shell .cmd-pane-head::before,
+.shell .summary-head-title::before,
+.shell .set-section h3::before {
+  content: "";
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 9px 0 0 var(--line), 18px 0 0 var(--line);
+  margin-right: 26px;
+  flex: 0 0 auto;
+}
+
+.shell .side-head > span {
+  gap: 8px;
+}
+
+.shell .side-head > span::before {
+  order: -1;
+}
+
+.shell .room-chip,
+.shell .person,
+.shell .side-act,
+.shell .side-agent-picker,
+.shell .side-agent-row,
+.shell .access-note,
+.shell .access-req,
+.shell .side-dl-code,
+.shell .room-switch-menu,
+.shell .composer-box,
+.shell .composer-reply,
+.shell .mention-menu,
+.shell .summary-meta,
+.shell .summary-body,
+.shell .stat,
+.shell .agent-card,
+.shell .token-create-card,
+.shell .token-row,
+.shell .token-dialog,
+.shell .agent-config-form,
+.shell .agent-runtime-config {
+  border-color: var(--line);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+
+.shell .room-chip,
+.shell .person,
+.shell .side-act,
+.shell .side-agent-row,
+.shell .room-switch-opt,
+.shell .mention-opt,
+.shell .appr-item {
+  transition: border-color 0.14s, background 0.14s, color 0.14s, box-shadow 0.14s;
+}
+
+.shell .room-chip:hover,
+.shell .person:hover,
+.shell .side-act:hover,
+.shell .side-agent-row:hover,
+.shell .room-switch-opt.on,
+.shell .room-switch-opt.current,
+.shell .mention-opt:hover,
+.shell .mention-opt.on {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shell .room-chip-cap,
+.shell .room-switch-text span,
+.shell .person-body span,
+.shell .side-act-body span,
+.shell .side-download-note,
+.shell .side-empty,
+.shell .side-agent-empty,
+.shell .side-agent-notice {
+  color: var(--faint);
+}
+
+.shell .room-chip-id,
+.shell .person-body strong,
+.shell .side-act-body strong,
+.shell .room-switch-text strong {
+  color: var(--ink);
+}
+
+.shell .room-switch-join,
+.shell .room-switch-actions,
+.shell .room-switch-actions button + button {
+  border-color: var(--line);
+}
+
+.shell .room-switch-join input,
+.shell .sticky-select,
+.shell .agent-config-field > input,
+.shell .agent-config-key-row input,
+.shell .token-create-form input {
+  border-color: var(--line);
+  background: rgba(13, 21, 25, 0.96);
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
+.shell .room-switch-join input:focus,
+.shell .sticky-select:focus,
+.shell .agent-config-field > input:focus,
+.shell .agent-config-key-row input:focus,
+.shell .token-create-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-faint);
+}
+
+.shell .side-dl-tabs button,
+.shell .room-switch-join-btn,
+.shell .side-add-agent,
+.shell .attach-btn,
+.shell .term-toggle,
+.shell .bubble-reply-btn,
+.shell .perm-btn,
+.shell .btn {
+  border-color: var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(241, 251, 252, 0.055);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  box-shadow: none;
+}
+
+.shell .side-dl-tabs button:hover,
+.shell .room-switch-join-btn:hover,
+.shell .side-add-agent:hover,
+.shell .attach-btn:hover:not(:disabled),
+.shell .term-toggle:hover,
+.shell .bubble-reply-btn:hover,
+.shell .btn:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  color: var(--ink);
+  background: var(--accent-faint);
+}
+
+.shell .btn-primary,
+.shell .send-btn,
+.shell .side-download-btn,
+.shell .side-agent-join:not(.is-joined),
+.shell .abtn-ok {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 1px var(--accent-faint), 0 10px 24px var(--accent-soft);
+}
+
+.shell .btn-primary:hover:not(:disabled),
+.shell .send-btn:hover:not(:disabled),
+.shell .side-download-btn:hover,
+.shell .side-agent-join:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.shell .side-dl-tabs button.on,
+.shell .term-toggle.on,
+.shell .sticky-chip,
+.shell .live-pill.on,
+.shell .agent-mgr-room,
+.shell .appr-rules {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+  color: var(--accent-bright);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shell .room-tabs {
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.shell .room-tab {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shell .room-tab:hover {
+  border-color: var(--line);
+  background: rgba(241, 251, 252, 0.06);
+  color: var(--ink);
+}
+
+.shell .room-tab.on {
+  border-color: var(--accent-line);
+  border-bottom-color: var(--accent-line);
+  background: var(--accent-faint);
+  color: var(--accent-bright);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shell .tab-badge {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-line);
+}
+
+.shell .messages-rail {
+  gap: 14px;
+}
+
+.shell .messages-empty,
+.shell .messages-backfill,
+.shell .messages-top {
+  color: var(--muted);
+}
+
+.shell .evt-row {
+  width: min(100%, var(--rail));
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(13, 21, 25, 0.94);
+}
+
+.shell .evt-rail {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-line);
+}
+
+.shell .evt-title {
+  color: var(--ink);
+}
+
+.shell .bubble-row.mentioned .bubble,
+.shell .mention-alert-card {
+  border-color: var(--accent-line);
+  background: linear-gradient(90deg, var(--accent-faint), var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent), 0 12px 34px var(--accent-soft);
+}
+
+.shell .bubble {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+}
+
+.shell .bubble-row.mine .bubble {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+  box-shadow: inset 3px 0 0 var(--accent), var(--shadow-sm);
+}
+
+.shell .bubble-meta strong,
+.shell .bubble-route,
+.shell .mention-token,
+.shell .mention-at {
+  color: var(--accent-bright);
+}
+
+.shell .bubble-reply-ref,
+.shell .composer-reply {
+  border-left-color: var(--accent);
+  background: var(--accent-faint);
+}
+
+.shell .bubble-att img,
+.shell .attach-thumb {
+  border-color: var(--line);
+  border-radius: var(--r-sm);
+}
+
+.shell .md-code,
+.shell .md-pre,
+.shell .copy-field,
+.shell .perm-pre,
+.shell .appr-pre,
+.shell .sev-detail {
+  border-color: var(--line);
+  background: rgba(5, 9, 12, 0.92);
+  color: var(--term-ink);
+}
+
+.shell .md-quote {
+  border-left-color: var(--accent-line);
+  color: var(--muted);
+}
+
+.shell .stream,
+.shell .cmd {
+  border-color: var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+
+.shell .stream-head,
+.shell .cmd-bar {
+  background: rgba(13, 21, 25, 0.96);
+}
+
+.shell .cmd-bar:hover {
+  background: rgba(18, 31, 37, 0.94);
+}
+
+.shell .stream-title strong,
+.shell .stream-status,
+.shell .cmd-run,
+.shell .cmd-status,
+.shell .cmd-snippet,
+.shell .cmd-id {
+  color: var(--ink);
+}
+
+.shell .sev-node::before,
+.shell .tl-item:not(:last-child) .tl-node::after {
+  background: var(--line);
+}
+
+.shell .sev-node > * {
+  background: var(--surface);
+}
+
+.shell .sev-tool,
+.shell .cmd-tabs button.on,
+.shell .ql-p,
+.shell .tl-ok,
+.shell .tl-live,
+.shell .summary-mark,
+.shell .set-auth-row svg {
+  color: var(--accent-bright);
+}
+
+.shell .composer-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-faint);
+}
+
+.shell .composer-box textarea::placeholder {
+  color: var(--faint);
+}
+
+.shell .composer-hint,
+.shell .composer-sticky .sticky-label {
+  color: var(--faint);
+}
+
+.shell .composer-hint kbd {
+  border-color: var(--line);
+  background: rgba(241, 251, 252, 0.025);
+  color: var(--muted);
+}
+
+.shell .mention-menu {
+  padding: 6px;
+}
+
+.shell .mention-opt {
+  border-radius: var(--r-sm);
+}
+
+.shell .agent-card {
+  border-top: 1px solid var(--line);
+  min-height: 242px;
+}
+
+.shell .agent-card::before {
+  inset: 0 auto 0 0;
+  width: 3px;
+  height: auto;
+  background: var(--tint, var(--accent));
+}
+
+.shell .agent-card-id strong,
+.shell .agent-live,
+.shell .summary-head-title strong,
+.shell .summary-meta-item strong,
+.shell .set-section h3,
+.shell .token-prefix,
+.shell .token-note {
+  color: var(--ink);
+}
+
+.shell .agent-meta,
+.shell .set-section,
+.shell .cmd-pane-in,
+.shell .appr-rule {
+  border-color: var(--line-soft);
+}
+
+.shell .agent-mention {
+  border-color: var(--line);
+  background: rgba(241, 251, 252, 0.025);
+  color: var(--accent-bright);
+}
+
+.shell .agent-mention:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+}
+
+.shell .stat strong {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.shell .stat span {
+  color: var(--faint);
+  letter-spacing: 0.14em;
+}
+
+.shell .perm-toast {
+  border-color: var(--line);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent), var(--shadow);
+}
+
+.shell .perm-bar {
+  background: var(--accent-faint);
+  border-bottom: 1px solid var(--line);
+}
+
+.shell .perm-id svg,
+.shell .perm-hint svg {
+  color: var(--accent-bright);
+}
+
+.shell .perm-allow,
+.shell .perm-always {
+  border-color: var(--accent-line);
+  color: var(--accent-bright);
+}
+
+.shell .perm-allow:hover,
+.shell .perm-always:hover {
+  border-color: var(--accent);
+  background: var(--accent-faint);
+}
+
+.shell .perm-deny {
+  border-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+.shell .chip,
+.shell .mode-badge,
+.shell .agent-mgr-provider,
+.shell .token-prefix {
+  border: 1px solid var(--line);
+  background: rgba(241, 251, 252, 0.025);
+  color: var(--muted);
+}
+
+.shell .chip-ok {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+  color: var(--accent-bright);
+}
+
+.shell .mode-agent {
+  border-color: var(--accent-line);
+  background: var(--accent-faint);
+  color: var(--accent-bright);
+}
+
+.shell .mode-slave {
+  border-color: var(--line);
+  background: rgba(241, 251, 252, 0.025);
+  color: var(--muted);
+}
+
+.shell .dev-tweaks-chip,
+.shell .dev-tweaks {
+  border-color: var(--line);
+  background: rgba(13, 21, 25, 0.92);
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .shell .room-tabs {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .shell .room-tab {
+    flex: 0 0 auto;
+  }
+}

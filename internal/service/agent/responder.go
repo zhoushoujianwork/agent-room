@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"time"
 
@@ -83,15 +84,21 @@ func (r *Responder) Reply(ctx context.Context, msg models.ChatMessage, history [
 	}
 
 	turnBudget := msg.TurnBudget - 1
+	content, suppressReply := stripNoReplyMarker(resp.Content)
+	targetID := r.replyTarget(msg.SenderID, content, history, turnBudget)
+	replyRequested := turnBudget > 0 && !suppressReply
+	if msg.SenderKind == models.SenderKindAgent && targetID == msg.SenderID && !explicitlyMentionsAgent(content, msg.SenderID) {
+		replyRequested = false
+	}
 	return models.ChatMessage{
 		ID:             id.New("msg"),
 		RoomID:         msg.RoomID,
 		Type:           models.MessageTypeChat,
 		SenderID:       r.agentID,
 		SenderKind:     models.SenderKindAgent,
-		TargetID:       msg.SenderID,
-		Content:        strings.TrimSpace(resp.Content),
-		ReplyRequested: turnBudget > 0,
+		TargetID:       targetID,
+		Content:        content,
+		ReplyRequested: replyRequested,
 		TurnBudget:     turnBudget,
 		CreatedAt:      time.Now().UTC(),
 		Metadata: map[string]string{
@@ -99,6 +106,62 @@ func (r *Responder) Reply(ctx context.Context, msg models.ChatMessage, history [
 			"session_id": resp.SessionID,
 		},
 	}, nil
+}
+
+var replyMentionPattern = regexp.MustCompile(`(?:^|\s)@([a-zA-Z0-9_-]{1,64})(?:\s|$|[,:;.!?，。！？、])`)
+var noReplyMarkerPattern = regexp.MustCompile(`(?i)\s*\[\[\s*no[-_\s]?reply\s*\]\]\s*`)
+
+func stripNoReplyMarker(content string) (string, bool) {
+	suppress := noReplyMarkerPattern.FindStringIndex(content) != nil
+	cleaned := noReplyMarkerPattern.ReplaceAllString(content, "")
+	return strings.TrimSpace(cleaned), suppress
+}
+
+func explicitlyMentionsAgent(content, agentID string) bool {
+	content = strings.TrimSpace(content)
+	agentID = strings.TrimSpace(agentID)
+	if content == "" || agentID == "" {
+		return false
+	}
+	return strings.Contains(content, "@"+agentID)
+}
+
+func (r *Responder) replyTarget(fallback, content string, history []models.ChatMessage, turnBudget int) string {
+	if turnBudget <= 0 {
+		return fallback
+	}
+	peers := knownAgentPeers(history, r.agentID)
+	if len(peers) == 0 {
+		return fallback
+	}
+	for _, match := range replyMentionPattern.FindAllStringSubmatch(content, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		target := strings.TrimSpace(match[1])
+		if peers[target] {
+			return target
+		}
+	}
+	return fallback
+}
+
+func knownAgentPeers(history []models.ChatMessage, selfID string) map[string]bool {
+	peers := make(map[string]bool)
+	for _, msg := range history {
+		if msg.Type != models.MessageTypePresence || msg.SenderKind != models.SenderKindAgent {
+			continue
+		}
+		id := strings.TrimSpace(msg.SenderID)
+		if id == "" || id == selfID {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(msg.Metadata["mode"]), "executor") {
+			continue
+		}
+		peers[id] = true
+	}
+	return peers
 }
 
 // resolveAttachments 把入站消息 metadata 里的附件引用解析成可直接 GET 的

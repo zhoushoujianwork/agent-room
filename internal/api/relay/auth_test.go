@@ -117,6 +117,105 @@ func TestCreateRoomSignedInTagsOwner(t *testing.T) {
 	if got.OwnerLogin == nil || *got.OwnerLogin != "alice" {
 		t.Fatalf("owner = %v, want alice", got.OwnerLogin)
 	}
+	if !got.Gated {
+		t.Fatalf("gated = false, want true for signed-in room")
+	}
+}
+
+func TestMyRoomsEndpointPersistsCreatedAndJoinedRooms(t *testing.T) {
+	secret := "secret-32-bytes-or-so-here-12345"
+	s := newTestServer(t, config.GitHubConfig{
+		ClientID: "id", ClientSecret: "sec", SessionSecret: secret, CookieName: "agent_room_session",
+	})
+
+	create := func(login string) models.Room {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/v1/rooms", nil)
+		req.AddCookie(signedCookie(t, secret, login))
+		rr := httptest.NewRecorder()
+		s.Routes().ServeHTTP(rr, req)
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("create room as %s = %d, want 201; body=%s", login, rr.Code, rr.Body.String())
+		}
+		var room models.Room
+		if err := json.NewDecoder(rr.Body).Decode(&room); err != nil {
+			t.Fatalf("decode room: %v", err)
+		}
+		return room
+	}
+	listMine := func(login string) []models.UserRoom {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/v1/me/rooms", nil)
+		req.AddCookie(signedCookie(t, secret, login))
+		rr := httptest.NewRecorder()
+		s.Routes().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("list rooms as %s = %d, want 200; body=%s", login, rr.Code, rr.Body.String())
+		}
+		var rooms []models.UserRoom
+		if err := json.NewDecoder(rr.Body).Decode(&rooms); err != nil {
+			t.Fatalf("decode rooms: %v", err)
+		}
+		return rooms
+	}
+
+	aliceRoom := create("alice")
+	bobRoom := create("bob")
+
+	rooms := listMine("alice")
+	if len(rooms) != 1 || rooms[0].ID != aliceRoom.ID {
+		t.Fatalf("alice rooms after create = %+v, want only %s", rooms, aliceRoom.ID)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/v1/me/rooms/"+bobRoom.ID, nil)
+	req.AddCookie(signedCookie(t, secret, "alice"))
+	rr := httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("remember bob room as alice = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+
+	rooms = listMine("alice")
+	if len(rooms) != 2 {
+		t.Fatalf("alice rooms after joining bob room len = %d, want 2: %+v", len(rooms), rooms)
+	}
+	seen := map[string]bool{}
+	for _, room := range rooms {
+		seen[room.ID] = true
+		if room.LastOpenedAt.IsZero() {
+			t.Fatalf("room %s has zero last_opened_at", room.ID)
+		}
+	}
+	if !seen[aliceRoom.ID] || !seen[bobRoom.ID] {
+		t.Fatalf("alice rooms = %+v, want created %s and joined %s", rooms, aliceRoom.ID, bobRoom.ID)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/me/rooms/"+bobRoom.ID, nil)
+	req.AddCookie(signedCookie(t, secret, "alice"))
+	rr = httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("forget bob room as alice = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	rooms = listMine("alice")
+	if len(rooms) != 1 || rooms[0].ID != aliceRoom.ID {
+		t.Fatalf("alice rooms after forget = %+v, want only %s", rooms, aliceRoom.ID)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/rooms/"+bobRoom.ID, nil)
+	req.AddCookie(signedCookie(t, secret, "bob"))
+	rr = httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("bob room was deleted by alice forget: get = %d; body=%s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/me/rooms", nil)
+	rr = httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("anonymous my rooms = %d, want 403", rr.Code)
+	}
 }
 
 func TestGetRoomRequiresSignInWhenAuthEnabled(t *testing.T) {

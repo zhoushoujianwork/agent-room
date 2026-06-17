@@ -12,6 +12,7 @@ import type {
   Participant,
   Room,
   RoomSummary,
+  UserRoom,
 } from "./types";
 import { cleanRoom } from "./lib";
 
@@ -66,6 +67,26 @@ export async function createRoom(title?: string): Promise<Room> {
   return sendJSON<Room>("/v1/rooms", "POST", title ? { title } : {});
 }
 
+export async function listMyRooms(limit = 50): Promise<UserRoom[]> {
+  const data = await getJSON<UserRoom[]>(`/v1/me/rooms?limit=${limit}`);
+  return data ?? [];
+}
+
+export async function rememberRoom(roomID: string): Promise<void> {
+  await sendJSON<{ ok: boolean }>(
+    `/v1/me/rooms/${encodeURIComponent(cleanRoom(roomID))}`,
+    "PUT",
+  );
+}
+
+export async function forgetMyRoom(roomID: string): Promise<void> {
+  const res = await fetch(`/v1/me/rooms/${encodeURIComponent(cleanRoom(roomID))}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new Error(`forget room → ${res.status}`);
+}
+
 // listAllRooms returns one page of rooms newest-first (admin-only on the
 // server). Resolves to an empty list when the caller isn't an admin or the
 // endpoint isn't available, so the UI can call it unconditionally.
@@ -112,6 +133,14 @@ export async function loadHistory(roomID: string): Promise<ChatMessage[]> {
   const res = await fetch(`/v1/rooms/${encodeURIComponent(roomID)}/messages?limit=240`);
   if (!res.ok) throw new Error("history request failed");
   return res.json();
+}
+
+export async function clearRoomHistory(roomID: string): Promise<void> {
+  const res = await fetch(`/v1/rooms/${encodeURIComponent(cleanRoom(roomID))}/messages`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new Error(`clear history → ${res.status}`);
 }
 
 // loadHistoryBefore pages backwards into older history: it returns up to
@@ -185,6 +214,14 @@ export async function loadSummary(roomID: string): Promise<RoomSummary | null> {
   } catch {
     return null;
   }
+}
+
+export async function clearRoomSummary(roomID: string): Promise<void> {
+  const res = await fetch(`/v1/rooms/${encodeURIComponent(cleanRoom(roomID))}/summary`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new Error(`clear summary → ${res.status}`);
 }
 
 /* ── agents (用户维度自管理) ──────────────────────────────────────── */

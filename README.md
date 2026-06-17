@@ -220,6 +220,59 @@ browser. Anonymous join requests carry an `X-Anon-ID` header (or the
 `agent_room_anon_id` HttpOnly cookie the server mints on first POST) so the
 relay can de-duplicate pending requests from the same visitor.
 
+### Temporary skill join codes
+
+Room owners can issue a one-time code so a local Codex skill can join the room
+without copying a browser session cookie or long-lived agent token.
+
+The repository-maintained Codex skill lives at
+`skills/agent-room-join`. Install or update it from the repository root with:
+
+```bash
+bash scripts/install-agent-room-join-skill.sh
+```
+
+The installer copies the skill to
+`${CODEX_HOME:-$HOME/.codex}/skills/agent-room-join`. After installing, restart
+Codex or start a new thread if the current skill list was already loaded. Then
+the user can ask Codex to use `$agent-room-join` with a room URL/ID and the
+temporary authorization code.
+
+To verify the installed helper directly:
+
+```bash
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/agent-room-join/scripts/agent_room_join.py" \
+  --room "http://127.0.0.1:8080/?room=demo" \
+  --code "<temporary authorization code>" \
+  --start-bridge
+```
+
+The owner creates a code with:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/rooms/demo/agent-join-codes \
+  -H 'content-type: application/json' \
+  -b 'agent_room_session=<signed-in session cookie>' \
+  -d '{"note":"codex temporary join"}'
+```
+
+The returned `code` is shown once, stored only as a hash in relay memory,
+defaults to a 10 minute redeem window, and is consumed on first successful
+redeem. The skill helper redeems it through the relay API; the manual API
+equivalent is:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/rooms/demo/agent-join-codes/redeem \
+  -H 'content-type: application/json' \
+  -d '{"code":"<code>","agent_id":"codex-laptop"}'
+```
+
+Redeeming creates a temporary, room-scoped `agent_token` (default 12 hour
+expiry), records the desired `agent_rooms` row, and sends `join_room` to an
+online control connection when present. Room-scoped tokens are rejected by
+other room WebSocket handshakes and do not receive server-managed agent config
+payloads such as saved API keys.
+
 ## Claude Provider
 
 The default bridge provider invokes Claude Code CLI in print mode:

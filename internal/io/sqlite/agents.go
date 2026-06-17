@@ -107,13 +107,24 @@ func (s *Store) InsertAgentToken(ctx context.Context, token models.AgentToken) e
 	if created.IsZero() {
 		created = time.Now().UTC()
 	}
+	expiresAt := ""
+	if token.ExpiresAt != nil && !token.ExpiresAt.IsZero() {
+		expiresAt = token.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	temporary := 0
+	if token.Temporary {
+		temporary = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
-        INSERT INTO agent_tokens (token_hash, owner_login, note, created_at, last_used_at, revoked)
-        VALUES (?, ?, ?, ?, '', 0)`,
+        INSERT INTO agent_tokens (token_hash, owner_login, note, created_at, last_used_at, expires_at, room_id, temporary, revoked)
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, 0)`,
 		token.TokenHash,
 		token.OwnerLogin,
 		token.Note,
 		created.UTC().Format(time.RFC3339Nano),
+		expiresAt,
+		token.RoomID,
+		temporary,
 	)
 	if err != nil {
 		return fmt.Errorf("sqlite insert agent token: %w", err)
@@ -124,7 +135,7 @@ func (s *Store) InsertAgentToken(ctx context.Context, token models.AgentToken) e
 // LookupAgentToken returns the token row for a given hash, or ErrNotFound.
 func (s *Store) LookupAgentToken(ctx context.Context, hash string) (*models.AgentToken, error) {
 	row := s.db.QueryRowContext(ctx, `
-        SELECT token_hash, owner_login, note, created_at, last_used_at, revoked
+        SELECT token_hash, owner_login, note, created_at, last_used_at, expires_at, room_id, temporary, revoked
         FROM agent_tokens WHERE token_hash = ?`, hash)
 	return scanAgentToken(row)
 }
@@ -143,7 +154,7 @@ func (s *Store) TouchAgentTokenLastUsed(ctx context.Context, hash string, t time
 
 func (s *Store) ListAgentTokensByOwner(ctx context.Context, owner string) ([]models.AgentToken, error) {
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT token_hash, owner_login, note, created_at, last_used_at, revoked
+        SELECT token_hash, owner_login, note, created_at, last_used_at, expires_at, room_id, temporary, revoked
         FROM agent_tokens WHERE owner_login = ? AND revoked = 0
         ORDER BY created_at DESC`, owner)
 	if err != nil {
@@ -278,9 +289,11 @@ func scanAgentToken(sc scanner) (*models.AgentToken, error) {
 		t          models.AgentToken
 		createdRaw string
 		lastUsed   string
+		expiresRaw string
+		temporary  int
 		revoked    int
 	)
-	if err := sc.Scan(&t.TokenHash, &t.OwnerLogin, &t.Note, &createdRaw, &lastUsed, &revoked); err != nil {
+	if err := sc.Scan(&t.TokenHash, &t.OwnerLogin, &t.Note, &createdRaw, &lastUsed, &expiresRaw, &t.RoomID, &temporary, &revoked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -300,6 +313,14 @@ func scanAgentToken(sc scanner) (*models.AgentToken, error) {
 		}
 		t.LastUsedAt = &ts
 	}
+	if expiresRaw != "" {
+		ts, err := time.Parse(time.RFC3339Nano, expiresRaw)
+		if err != nil {
+			return nil, fmt.Errorf("sqlite parse agent token expires_at %q: %w", expiresRaw, err)
+		}
+		t.ExpiresAt = &ts
+	}
+	t.Temporary = temporary != 0
 	return &t, nil
 }
 

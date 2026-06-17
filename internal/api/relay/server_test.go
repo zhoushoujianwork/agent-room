@@ -342,6 +342,126 @@ func TestPublishStripsClientSuppliedExecToken(t *testing.T) {
 	}
 }
 
+func TestPublishRetargetsAgentPeerMentionFromOldBridge(t *testing.T) {
+	store := memory.NewStore()
+	service := chat.NewService(store)
+	h := newHub(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	alice := newFakeClient("agent-alice", models.SenderKindAgent)
+	bob := newFakeClient("agent-bob", models.SenderKindAgent)
+	user := newFakeClient("operator", models.SenderKindUser)
+	h.rooms["demo"] = map[*client]struct{}{alice: {}, bob: {}, user: {}}
+
+	msg := models.ChatMessage{
+		Type:           models.MessageTypeChat,
+		SenderID:       "agent-alice",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "operator",
+		Content:        "你好 agent-bob，请介绍一下你的运行环境",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}
+	saved, err := h.Publish(context.Background(), "demo", msg)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if saved.TargetID != "agent-bob" {
+		t.Fatalf("saved.TargetID = %q, want agent-bob", saved.TargetID)
+	}
+	if !saved.ReplyRequested {
+		t.Fatalf("saved.ReplyRequested = false, want true for initial retarget")
+	}
+	if got := drain(t, bob); got.TargetID != "agent-bob" {
+		t.Fatalf("bob got TargetID = %q, want agent-bob", got.TargetID)
+	}
+}
+
+func TestPublishSuppressesAgentPeerAckWithoutExplicitMention(t *testing.T) {
+	store := memory.NewStore()
+	service := chat.NewService(store)
+	h := newHub(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	alice := newFakeClient("agent-alice", models.SenderKindAgent)
+	bob := newFakeClient("agent-bob", models.SenderKindAgent)
+	h.rooms["demo"] = map[*client]struct{}{alice: {}, bob: {}}
+
+	msg := models.ChatMessage{
+		Type:           models.MessageTypeChat,
+		SenderID:       "agent-alice",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "agent-bob",
+		Content:        "收到，待命中。有活招呼。",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}
+	saved, err := h.Publish(context.Background(), "demo", msg)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if saved.TargetID != "agent-bob" {
+		t.Fatalf("saved.TargetID = %q, want agent-bob", saved.TargetID)
+	}
+	if saved.ReplyRequested {
+		t.Fatalf("saved.ReplyRequested = true, want false")
+	}
+}
+
+func TestPublishKeepsAgentPeerReplyWhenTargetExplicitlyMentioned(t *testing.T) {
+	store := memory.NewStore()
+	service := chat.NewService(store)
+	h := newHub(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	alice := newFakeClient("agent-alice", models.SenderKindAgent)
+	bob := newFakeClient("agent-bob", models.SenderKindAgent)
+	h.rooms["demo"] = map[*client]struct{}{alice: {}, bob: {}}
+
+	msg := models.ChatMessage{
+		Type:           models.MessageTypeChat,
+		SenderID:       "agent-alice",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "agent-bob",
+		Content:        "@agent-bob 继续确认 Linux 侧结果",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}
+	saved, err := h.Publish(context.Background(), "demo", msg)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if !saved.ReplyRequested {
+		t.Fatalf("saved.ReplyRequested = false, want true")
+	}
+}
+
+func TestPublishDoesNotRetargetExecutorPeerMentionAsChat(t *testing.T) {
+	store := memory.NewStore()
+	service := chat.NewService(store)
+	h := newHub(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	alice := newFakeClient("agent-alice", models.SenderKindAgent)
+	exec := newFakeClient("executor-one", models.SenderKindAgent)
+	exec.participant.Metadata = map[string]string{"mode": "executor"}
+	user := newFakeClient("operator", models.SenderKindUser)
+	h.rooms["demo"] = map[*client]struct{}{alice: {}, exec: {}, user: {}}
+
+	msg := models.ChatMessage{
+		Type:           models.MessageTypeChat,
+		SenderID:       "agent-alice",
+		SenderKind:     models.SenderKindAgent,
+		TargetID:       "operator",
+		Content:        "你好 executor-one，请介绍一下",
+		ReplyRequested: true,
+		TurnBudget:     12,
+	}
+	saved, err := h.Publish(context.Background(), "demo", msg)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if saved.TargetID != "operator" {
+		t.Fatalf("saved.TargetID = %q, want operator", saved.TargetID)
+	}
+}
+
 func TestPublishRejectsCommandWithoutTarget(t *testing.T) {
 	store := memory.NewStore()
 	service := chat.NewService(store)

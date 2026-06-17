@@ -561,6 +561,9 @@ func buildClaudePrompt(req models.ProviderRequest, delegateViaMCP bool) string {
 	if guide := executorUsageGuide(req, delegateViaMCP); guide != "" {
 		b.WriteString(guide)
 	}
+	if guide := agentPeerConversationGuide(req); guide != "" {
+		b.WriteString(guide)
+	}
 	if guide := historySearchGuide(req); guide != "" {
 		b.WriteString(guide)
 	}
@@ -585,6 +588,25 @@ func buildClaudePrompt(req models.ProviderRequest, delegateViaMCP bool) string {
 	if guide := attachmentGuide(req.Attachments); guide != "" {
 		b.WriteString(guide)
 	}
+	return b.String()
+}
+
+func agentPeerConversationGuide(req models.ProviderRequest) string {
+	peers := agentPeers(req.History, req.AgentID)
+	if len(peers) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nTalking with other agent peers:\n")
+	b.WriteString("Other active AI agents in this room can answer chat messages when directly mentioned. If the user asks you to talk to, interview, compare with, or hand off to another agent, send your one chat reply to that peer by starting with @<agent_id> and asking a concrete question. The bridge will keep routing replies that mention an agent peer until the room's turn budget is exhausted.\n")
+	b.WriteString("Available AI agent peers right now: ")
+	b.WriteString(strings.Join(peers, ", "))
+	b.WriteString("\n")
+	b.WriteString("- Mention exactly one bare agent id from that list, for example: @agent-id please introduce your environment and current capabilities.\n")
+	b.WriteString("- Only mention or directly call another agent when you genuinely need that agent to answer. A mentioned agent is expected to reply.\n")
+	b.WriteString("- When the peer conversation is complete, you are only acknowledging, or you do not need another reply, end your message with [[no-reply]]. The bridge will remove that marker and stop the automatic peer loop.\n")
+	b.WriteString("- Do not claim you contacted another agent unless you actually mention it in the outgoing message.\n")
+	b.WriteString("- If the user wants a final synthesis, wait until the other agent has replied in room history before summarizing.\n")
 	return b.String()
 }
 
@@ -902,6 +924,28 @@ func executorPeers(history []models.ChatMessage, selfID string) []string {
 			entry += " (os: " + peerOS + ")"
 		}
 		out = append(out, entry)
+	}
+	return out
+}
+
+func agentPeers(history []models.ChatMessage, selfID string) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0)
+	for _, msg := range history {
+		if msg.Type != models.MessageTypePresence {
+			continue
+		}
+		if msg.SenderID == "" || msg.SenderID == selfID {
+			continue
+		}
+		if strings.TrimSpace(msg.Metadata["mode"]) == "executor" {
+			continue
+		}
+		if seen[msg.SenderID] {
+			continue
+		}
+		seen[msg.SenderID] = true
+		out = append(out, msg.SenderID)
 	}
 	return out
 }

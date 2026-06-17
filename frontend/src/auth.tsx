@@ -125,6 +125,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [accentHue, setAccentHueState] = useState<string>(() => readAccent());
 
   useEffect(() => {
+    document.body.classList.add("dm");
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);

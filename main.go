@@ -75,9 +75,11 @@ func runRelay(cfg config.Config, log *slog.Logger, args []string) error {
 
 func runBridge(cfg config.Config, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("bridge", flag.ExitOnError)
+	modeAlias := ""
 	fs.StringVar(&cfg.RelayURL, "relay", cfg.RelayURL, "relay websocket URL")
 	fs.StringVar(&cfg.RoomID, "room", cfg.RoomID, "room id")
 	fs.StringVar(&cfg.BridgeMode, "bridge-mode", cfg.BridgeMode, "bridge mode: agent or executor")
+	fs.StringVar(&modeAlias, "mode", "", "bridge mode alias: agent or executor")
 	fs.StringVar(&cfg.AgentID, "agent-id", cfg.AgentID, "local agent id")
 	fs.StringVar(&cfg.AgentLabel, "agent-label", cfg.AgentLabel, "display label for this local agent")
 	fs.StringVar(&cfg.AgentToken, "agent-token", cfg.AgentToken, "agent token binding this agent to a relay user account (overrides AGENT_ROOM_AGENT_TOKEN); empty = anonymous agent")
@@ -109,8 +111,11 @@ func runBridge(cfg config.Config, log *slog.Logger, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if strings.TrimSpace(modeAlias) != "" {
+		cfg.BridgeMode = modeAlias
+	}
 
-	if err := resolveBridgeDefaults(&cfg); err != nil {
+	if err := resolveBridgeDefaults(&cfg, bridgeModeExplicit(fs, modeAlias)); err != nil {
 		return err
 	}
 
@@ -160,12 +165,31 @@ func runBridge(cfg config.Config, log *slog.Logger, args []string) error {
 	return app.NewBridgeApp(cfg, log).Run(context.Background())
 }
 
+func bridgeModeExplicit(fs *flag.FlagSet, modeAlias string) bool {
+	if strings.TrimSpace(modeAlias) != "" || strings.TrimSpace(os.Getenv("AGENT_ROOM_BRIDGE_MODE")) != "" {
+		return true
+	}
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "bridge-mode" || f.Name == "mode" {
+			explicit = true
+		}
+	})
+	return explicit
+}
+
 // resolveBridgeDefaults fills in -room, -agent-id, -relay, and (for executor
 // mode) -exec-token when the user hasn't provided them explicitly. Room is
 // prompted from a TTY, ids and tokens are generated once and cached under
 // ~/.agent-room/ so a bridge re-appears as the same participant across
 // restarts.
-func resolveBridgeDefaults(cfg *config.Config) error {
+func resolveBridgeDefaults(cfg *config.Config, modeExplicit bool) error {
+	if !modeExplicit {
+		if mode, ok := promptBridgeModeFromTTY(os.Stdin, os.Stderr); ok {
+			cfg.BridgeMode = mode
+		}
+	}
+
 	// In agent+token mode the bridge can start without a room (it will receive
 	// join_room directives over the control connection). Otherwise a room is
 	// required and we prompt interactively when running from a TTY.
@@ -232,6 +256,28 @@ func resolveBridgeDefaults(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+func promptBridgeModeFromTTY(in *os.File, out *os.File) (string, bool) {
+	info, err := in.Stat()
+	if err != nil || (info.Mode()&os.ModeCharDevice) == 0 {
+		return "", false
+	}
+	fmt.Fprint(out, "Bridge 模式 [agent/executor] (默认 agent): ")
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && strings.TrimSpace(line) == "" {
+		return "", false
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "", "a", "agent":
+		return "agent", true
+	case "e", "executor", "exec", "slave":
+		return "executor", true
+	default:
+		fmt.Fprintf(out, "未识别模式 %q，使用 agent。需要被动执行命令可传 -mode executor 或 -bridge-mode executor。\n", strings.TrimSpace(line))
+		return "agent", true
+	}
 }
 
 // resolveCachedExecToken returns a stable shared secret for this executor.
@@ -531,6 +577,7 @@ Run a local relay instead:
 
 Self-hosted bridge or scripted invocation (all flags optional):
   agent-room bridge -relay wss://your-relay/v1/rooms/<room>/ws -room <room> -agent-id <id>
+  agent-room bridge -mode executor -room <room> -exec-token <secret>
   agent-room bridge -bridge-mode executor -room <room> -exec-token <secret>
 
 Other:

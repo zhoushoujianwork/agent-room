@@ -85,3 +85,10 @@ func (s *Store) UpsertSummary(_ context.Context, summary models.RoomSummary) err
 	s.summaries[summary.RoomID] = summary
 	return nil
 }
+
+func (s *Store) DeleteSummary(_ context.Context, roomID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.summaries, roomID)
+	return nil
+}

@@ -59,22 +59,45 @@ func hashAgentToken(token string) string {
 // receive a non-empty token but get ok=false should reject the connection;
 // callers with no token at all must not call this (anonymous stays allowed).
 func (s *Server) validateAgentToken(ctx context.Context, token string) (string, bool) {
-	if s.agents == nil {
+	resolved, ok := s.resolveAgentToken(ctx, token)
+	if !ok {
 		return "", false
+	}
+	return resolved.OwnerLogin, true
+}
+
+type validatedAgentToken struct {
+	OwnerLogin string
+	RoomID     string
+	ExpiresAt  *time.Time
+	Temporary  bool
+}
+
+func (s *Server) resolveAgentToken(ctx context.Context, token string) (validatedAgentToken, bool) {
+	if s.agents == nil {
+		return validatedAgentToken{}, false
 	}
 	hash := hashAgentToken(token)
 	rec, err := s.agents.LookupAgentToken(ctx, hash)
 	if err != nil || rec == nil || rec.Revoked {
-		return "", false
+		return validatedAgentToken{}, false
+	}
+	if rec.ExpiresAt != nil && !rec.ExpiresAt.After(time.Now().UTC()) {
+		return validatedAgentToken{}, false
 	}
 	owner := strings.TrimSpace(rec.OwnerLogin)
 	if owner == "" {
-		return "", false
+		return validatedAgentToken{}, false
 	}
 	if err := s.agents.TouchAgentTokenLastUsed(ctx, hash, time.Now().UTC()); err != nil {
 		s.logger.Warn("touch agent token last_used failed", slog.Any("error", err))
 	}
-	return owner, true
+	return validatedAgentToken{
+		OwnerLogin: owner,
+		RoomID:     strings.TrimSpace(rec.RoomID),
+		ExpiresAt:  rec.ExpiresAt,
+		Temporary:  rec.Temporary,
+	}, true
 }
 
 // requireSession returns the authenticated login or writes a 403 and returns
@@ -191,6 +214,9 @@ type tokenResponse struct {
 	Note       string     `json:"note"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	RoomID     string     `json:"room_id,omitempty"`
+	Temporary  bool       `json:"temporary,omitempty"`
 }
 
 // handleAgentTokens serves POST (generate) and GET (list) /v1/agents/tokens.
@@ -263,6 +289,9 @@ func (s *Server) listAgentTokens(w http.ResponseWriter, r *http.Request, login s
 			Note:       t.Note,
 			CreatedAt:  t.CreatedAt,
 			LastUsedAt: t.LastUsedAt,
+			ExpiresAt:  t.ExpiresAt,
+			RoomID:     t.RoomID,
+			Temporary:  t.Temporary,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tokens": out})

@@ -1,4 +1,5 @@
-/* Agent Room — entry stylesheet. Aggregates theme tokens + layout + chat + features. */
+/* Agent Room — entry stylesheet. Daboluo Dot-Matrix is the canonical style source. */
+@import url("https://daboluo.cc/design/dot-matrix.css");
 @import "./theme.css";
 @import "./layout.css";
 @import "./chat.css";

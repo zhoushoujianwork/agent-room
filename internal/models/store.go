@@ -53,6 +53,7 @@ type RoomSummary struct {
 type SummaryStore interface {
 	GetSummary(ctx context.Context, roomID string) (RoomSummary, error)
 	UpsertSummary(ctx context.Context, summary RoomSummary) error
+	DeleteSummary(ctx context.Context, roomID string) error
 }
 
 // RoomStore persists rooms and access requests. Both the SQLite and
@@ -69,6 +70,10 @@ type RoomStore interface {
 	ListRooms(ctx context.Context, limit, offset int) ([]Room, error)
 	RecordUserActivity(ctx context.Context, user UserActivity, incrementLogin bool) error
 	ListUserActivities(ctx context.Context) ([]UserActivity, error)
+	RecordUserRoom(ctx context.Context, login, roomID string, openedAt time.Time) error
+	ForgetUserRoom(ctx context.Context, login, roomID string) error
+	ListUserRooms(ctx context.Context, login string, limit, offset int) ([]UserRoom, error)
+	DeleteUserRoomsByRoom(ctx context.Context, roomID string) error
 
 	CreateAccessRequest(ctx context.Context, req AccessRequest) error
 	GetAccessRequest(ctx context.Context, requestID string) (*AccessRequest, error)

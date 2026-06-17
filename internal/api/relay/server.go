@@ -44,6 +44,9 @@ type Server struct {
 	logger      *slog.Logger
 	upgrader    websocket.Upgrader
 	hub         *hub
+
+	agentJoinCodesMu sync.Mutex
+	agentJoinCodes   map[string]agentJoinCode
 }
 
 // NewServer wires a relay with chat + room persistence + optional
@@ -59,6 +62,7 @@ func NewServer(cfg config.Config, service *chat.Service, rooms models.RoomStore,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(_ *http.Request) bool { return true },
 		},
+		agentJoinCodes: make(map[string]agentJoinCode),
 	}
 	// Agent-ownership persistence is an optional capability: production stores
 	// (SQLite, in-memory) implement AgentStore; legacy/test stores may not, in
@@ -113,6 +117,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/auth/sso/login", s.handleSSOLogin)
 	mux.HandleFunc("/auth/sso/callback", s.handleSSOCallback)
 	mux.HandleFunc("/auth/logout", s.handleAuthLogout)
+	mux.HandleFunc("/v1/me/rooms", s.handleMyRooms)
+	mux.HandleFunc("/v1/me/rooms/", s.handleMyRoom)
 	mux.HandleFunc("/v1/me", s.handleMe)
 	mux.HandleFunc("/v1/admin/rooms", s.handleAdminRooms)
 	mux.HandleFunc("/v1/admin/users", s.handleAdminUsers)
@@ -265,7 +271,7 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	room := models.Room{
 		ID:        newRoomID(),
-		Gated:     false,
+		Gated:     login != "",
 		Ended:     false,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -281,6 +287,12 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		if err := s.rooms.CreateRoom(r.Context(), room); err != nil {
 			writeError(w, http.StatusInternalServerError, "create room failed: "+err.Error())
 			return
+		}
+		if login != "" {
+			if err := s.rooms.RecordUserRoom(r.Context(), login, room.ID, room.CreatedAt); err != nil {
+				writeError(w, http.StatusInternalServerError, "record user room failed: "+err.Error())
+				return
+			}
 		}
 	}
 	writeJSON(w, http.StatusCreated, room)
@@ -503,6 +515,12 @@ func (s *Server) handleRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// /v1/rooms/:id/agent-join-codes[/redeem]
+	if roomID, action, ok := parseAgentJoinCodePath(r.URL.Path); ok {
+		s.handleAgentJoinCodes(w, r, roomID, action)
+		return
+	}
+
 	// /v1/rooms/:id/agents[/:agentID]
 	if roomID, agentID, ok := parseRoomAgentsPath(r.URL.Path); ok {
 		s.handleRoomAgents(w, r, roomID, agentID)
@@ -520,10 +538,14 @@ func (s *Server) handleRoom(w http.ResponseWriter, r *http.Request) {
 		s.handleListMessages(w, r, roomID)
 	case action == "messages" && r.Method == http.MethodPost:
 		s.handlePostMessage(w, r, roomID)
+	case action == "messages" && r.Method == http.MethodDelete:
+		s.handleClearMessages(w, r, roomID)
 	case action == "participants" && r.Method == http.MethodGet:
 		s.handleListParticipants(w, r, roomID)
 	case action == "summary" && r.Method == http.MethodGet:
 		s.handleGetSummary(w, r, roomID)
+	case action == "summary" && r.Method == http.MethodDelete:
+		s.handleClearSummary(w, r, roomID)
 	case action == "ws" && r.Method == http.MethodGet:
 		s.handleWS(w, r, roomID)
 	default:
@@ -560,6 +582,26 @@ func parseRoomAgentsPath(path string) (string, string, bool) {
 	}
 	if len(parts) == 3 && parts[2] != "" {
 		return parts[0], parts[2], true
+	}
+	return "", "", false
+}
+
+// parseAgentJoinCodePath matches /v1/rooms/:id/agent-join-codes and
+// /v1/rooms/:id/agent-join-codes/redeem.
+func parseAgentJoinCodePath(path string) (string, string, bool) {
+	rest := strings.TrimPrefix(path, "/v1/rooms/")
+	if rest == path {
+		return "", "", false
+	}
+	parts := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(parts) < 2 || parts[1] != "agent-join-codes" || parts[0] == "" {
+		return "", "", false
+	}
+	if len(parts) == 2 {
+		return parts[0], "", true
+	}
+	if len(parts) == 3 && parts[2] == "redeem" {
+		return parts[0], "redeem", true
 	}
 	return "", "", false
 }
@@ -624,6 +666,21 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request, room
 	writeJSON(w, http.StatusOK, messages)
 }
 
+func (s *Server) handleClearMessages(w http.ResponseWriter, r *http.Request, roomID string) {
+	if _, ok := s.requireOwner(w, r, roomID); !ok {
+		return
+	}
+	if err := s.rooms.DeleteMessagesByRoom(r.Context(), roomID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.deleteSummary(r.Context(), roomID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // handleGetSummary returns the room's rolling LLM summary. When the summary
 // feature is off or no summary exists yet, it returns an empty payload (200)
 // so clients can treat "no summary" uniformly without special-casing 404.
@@ -638,6 +695,24 @@ func (s *Server) handleGetSummary(w http.ResponseWriter, r *http.Request, roomID
 		return
 	}
 	writeJSON(w, http.StatusOK, sum)
+}
+
+func (s *Server) handleClearSummary(w http.ResponseWriter, r *http.Request, roomID string) {
+	if _, ok := s.requireOwner(w, r, roomID); !ok {
+		return
+	}
+	if err := s.deleteSummary(r.Context(), roomID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) deleteSummary(ctx context.Context, roomID string) error {
+	if s.summaries == nil {
+		return nil
+	}
+	return s.summaries.DeleteSummary(ctx, roomID)
 }
 
 func (s *Server) handleListParticipants(w http.ResponseWriter, _ *http.Request, roomID string) {
@@ -669,14 +744,25 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request, roomID string)
 	// one is rejected. When the store doesn't support agent ownership the token
 	// is ignored (feature off), preserving legacy behavior.
 	ownerLogin := ""
+	tokenRoomID := ""
+	tokenTemporary := false
 	if token := strings.TrimSpace(r.URL.Query().Get("agent_token")); token != "" && s.agents != nil {
-		owner, ok := s.validateAgentToken(r.Context(), token)
+		resolved, ok := s.resolveAgentToken(r.Context(), token)
 		if !ok {
 			s.logger.Warn("rejected agent: invalid token", slog.String("room_id", roomID))
 			writeError(w, http.StatusUnauthorized, "invalid or revoked agent token")
 			return
 		}
-		ownerLogin = owner
+		if resolved.RoomID != "" && resolved.RoomID != roomID {
+			s.logger.Warn("rejected agent: token room mismatch",
+				slog.String("room_id", roomID),
+				slog.String("token_room_id", resolved.RoomID))
+			writeError(w, http.StatusForbidden, "agent token is not authorized for this room")
+			return
+		}
+		ownerLogin = resolved.OwnerLogin
+		tokenRoomID = resolved.RoomID
+		tokenTemporary = resolved.Temporary
 	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
@@ -689,6 +775,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request, roomID string)
 	client := newClient(s.hub, roomID, conn, r.RemoteAddr, r.URL.Query(), audit)
 	if ownerLogin != "" {
 		client.owner = ownerLogin
+		client.tokenRoomID = tokenRoomID
+		client.tokenTemporary = tokenTemporary
 		if client.participant.Metadata == nil {
 			client.participant.Metadata = map[string]string{}
 		}
@@ -1040,7 +1128,9 @@ func (h *hub) bindAgentOwner(ctx context.Context, c *client, msg models.ChatMess
 	// Now that the agent is bound and online, push any server-managed config so
 	// it takes effect on the next reply. Delivered only on this connection —
 	// never broadcast, never persisted (see sendConfigUpdateToClient).
-	h.pushAgentConfig(ctx, c, agentID)
+	if !c.tokenTemporary {
+		h.pushAgentConfig(ctx, c, agentID)
+	}
 }
 
 // ErrCommandMissingTarget is returned when a command message lacks the
@@ -1062,6 +1152,8 @@ func (h *hub) Publish(ctx context.Context, roomID string, msg models.ChatMessage
 	// is the sole source. Strip anything they sent before it can be stored or
 	// broadcast.
 	msg = redactSensitive(msg)
+	msg = h.suppressAgentPeerReplyUnlessMentioned(roomID, msg)
+	msg = h.retargetAgentPeerMention(roomID, msg)
 
 	stored, err := h.service.Add(ctx, roomID, msg)
 	if err != nil {
@@ -1088,6 +1180,112 @@ func (h *hub) Publish(ctx context.Context, roomID string, msg models.ChatMessage
 
 	h.broadcastTargeted(roomID, stored, stored, "")
 	return stored, nil
+}
+
+func (h *hub) suppressAgentPeerReplyUnlessMentioned(roomID string, msg models.ChatMessage) models.ChatMessage {
+	if msg.Type != "" && msg.Type != models.MessageTypeChat {
+		return msg
+	}
+	if msg.SenderKind != models.SenderKindAgent || !msg.ReplyRequested || msg.TurnBudget <= 0 {
+		return msg
+	}
+	if !h.isLiveChatAgent(roomID, msg.TargetID) {
+		return msg
+	}
+	if explicitlyMentionsAgent(msg.Content, msg.TargetID) {
+		return msg
+	}
+	h.logger.Info("suppressing agent peer auto reply",
+		slog.String("room_id", roomID),
+		slog.String("from", msg.SenderID),
+		slog.String("target", msg.TargetID))
+	msg.ReplyRequested = false
+	return msg
+}
+
+func (h *hub) retargetAgentPeerMention(roomID string, msg models.ChatMessage) models.ChatMessage {
+	if msg.Type != "" && msg.Type != models.MessageTypeChat {
+		return msg
+	}
+	if msg.SenderKind != models.SenderKindAgent || !msg.ReplyRequested || msg.TurnBudget <= 0 {
+		return msg
+	}
+	if h.isLiveChatAgent(roomID, msg.TargetID) {
+		return msg
+	}
+	if target := h.mentionedLiveChatAgent(roomID, msg.SenderID, msg.Content); target != "" {
+		h.logger.Info("retargeting agent peer mention",
+			slog.String("room_id", roomID),
+			slog.String("from", msg.SenderID),
+			slog.String("old_target", msg.TargetID),
+			slog.String("new_target", target))
+		msg.TargetID = target
+	}
+	return msg
+}
+
+func explicitlyMentionsAgent(content, agentID string) bool {
+	content = strings.TrimSpace(content)
+	agentID = strings.TrimSpace(agentID)
+	if content == "" || agentID == "" {
+		return false
+	}
+	return strings.Contains(content, "@"+agentID)
+}
+
+func (h *hub) isLiveChatAgent(roomID, agentID string) bool {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.rooms[roomID] {
+		if c.participant.Kind != models.SenderKindAgent || c.participant.ID != agentID {
+			continue
+		}
+		return !strings.EqualFold(strings.TrimSpace(c.participant.Metadata["mode"]), "executor")
+	}
+	return false
+}
+
+func (h *hub) mentionedLiveChatAgent(roomID, senderID, content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	type candidate struct {
+		id  string
+		pos int
+	}
+	candidates := make([]candidate, 0)
+	h.mu.RLock()
+	for c := range h.rooms[roomID] {
+		if c.participant.Kind != models.SenderKindAgent {
+			continue
+		}
+		id := strings.TrimSpace(c.participant.ID)
+		if id == "" || id == strings.TrimSpace(senderID) {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(c.participant.Metadata["mode"]), "executor") {
+			continue
+		}
+		if pos := strings.Index(content, id); pos >= 0 {
+			candidates = append(candidates, candidate{id: id, pos: pos})
+		}
+	}
+	h.mu.RUnlock()
+	if len(candidates) == 0 {
+		return ""
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].pos != candidates[j].pos {
+			return candidates[i].pos < candidates[j].pos
+		}
+		return candidates[i].id < candidates[j].id
+	})
+	return candidates[0].id
 }
 
 // execToken returns the exec_token an executor reported via presence for the
@@ -1239,6 +1437,12 @@ type client struct {
 	// handshake; empty for anonymous connections. It is server-derived and
 	// authoritative — clients can never set their own owner_login via metadata.
 	owner string
+	// tokenRoomID scopes temporary skill tokens to a single room. Empty means
+	// this connection used a normal long-lived token or no token.
+	tokenRoomID string
+	// tokenTemporary marks room-scoped skill tokens so privileged per-agent
+	// config is not pushed to an untrusted temporary join.
+	tokenTemporary bool
 }
 
 func newClient(hub *hub, roomID string, conn *websocket.Conn, remoteAddr string, query map[string][]string, audit bool) *client {

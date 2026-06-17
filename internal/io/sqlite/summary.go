@@ -57,6 +57,13 @@ func (s *Store) UpsertSummary(ctx context.Context, summary models.RoomSummary) e
 	return nil
 }
 
+func (s *Store) DeleteSummary(ctx context.Context, roomID string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM room_summaries WHERE room_id = ?`, roomID); err != nil {
+		return fmt.Errorf("sqlite delete summary: %w", err)
+	}
+	return nil
+}
+
 // Search filters a room's messages by content substring, type, and sequence
 // lower bound. Results are returned oldest-first, like List.
 func (s *Store) Search(ctx context.Context, roomID string, q models.MessageQuery) ([]models.ChatMessage, error) {
