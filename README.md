@@ -177,32 +177,6 @@ npm run dev
 The production UI is built into `internal/api/relay/assets/dist` and embedded into the Go relay binary.
 Download binaries under `internal/api/relay/assets/downloads/agent-room-*` are generated release artifacts and are intentionally ignored by git. Build them as part of packaging/deployment before serving `/downloads/agent-room` or `/downloads/windows`.
 
-### Build Hub deployment
-
-Deploy the current worktree to the existing Build Hub service:
-
-```bash
-bash scripts/buildhub-deploy.sh
-```
-
-The script builds the frontend, runs `go test ./...`, cross-compiles a Linux
-binary locally, uploads a versioned release to the Build Hub VM, runs the remote
-SQLite backup hook, switches `~/apps/agent-room/current`, restarts
-`agent-room.service`, registers Build Hub metadata, and verifies `/healthz` on
-both the VM and the Build Hub domain.
-
-Useful variants:
-
-```bash
-bash scripts/buildhub-deploy.sh --label direct-ai
-bash scripts/buildhub-deploy.sh --skip-tests
-bash scripts/buildhub-deploy.sh --dry-run
-```
-
-By default it deploys uncommitted local changes too and marks the release
-version with `dirty`. Use `--require-clean` when you want deployments to fail
-unless the Git working tree is clean.
-
 ## Access model
 
 Without auth configuration, Agent Room runs as a local anonymous relay: anyone
@@ -309,7 +283,7 @@ that hide the room API details.
 
 ```bash
 agent-room direct-ai \
-  -room "https://agent-room-zhoushoujian.build.patsnap.info/?room=<room>" \
+  -room "http://127.0.0.1:8080/?room=<room>" \
   -agent-id ai-zhoushoujian \
   -hello \
   -tail 30

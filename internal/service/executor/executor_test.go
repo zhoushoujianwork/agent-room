@@ -141,3 +141,27 @@ func TestExecutorRunsAuthorizedCommand(t *testing.T) {
 		t.Fatalf("reply content missing stdout: %q", reply.Content)
 	}
 }
+
+func TestExecutorMarksCanceledCommandStopped(t *testing.T) {
+	runner := &fakeRunner{resp: models.CommandRunResult{ExitCode: 0}}
+	exec := New(Config{AgentID: "target", AllowUnauthenticated: true}, runner)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	reply := exec.Execute(ctx, models.ChatMessage{
+		ID:       "msg_1",
+		RoomID:   "demo",
+		Type:     models.MessageTypeCommand,
+		SenderID: "operator",
+		TargetID: "target",
+		Content:  "sleep 30",
+	})
+
+	if reply.Metadata["stopped"] != "true" {
+		t.Fatalf("stopped = %q, want true", reply.Metadata["stopped"])
+	}
+	if reply.Metadata["exit_code"] != "-1" {
+		t.Fatalf("exit_code = %q, want -1", reply.Metadata["exit_code"])
+	}
+}

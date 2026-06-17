@@ -256,62 +256,6 @@
 
 /* ── App shell ───────────────────────────────────────────────────── */
 .shell { height: 100vh; display: grid; grid-template-columns: minmax(248px, 296px) 1fr; overflow: hidden; }
-/* 右侧执行器终端展开时切到三栏。窄屏放弃第三栏,终端隐藏。 */
-.shell-term { grid-template-columns: minmax(248px, 296px) 1fr minmax(300px, 380px); }
-@media (max-width: 1200px) {
-  .shell-term { grid-template-columns: minmax(248px, 296px) 1fr; }
-  .shell-term .term-panel { display: none; }
-}
-
-/* ── Executor terminal panel ─────────────────────────────────────── */
-.term-panel { height: 100vh; min-width: 0; display: flex; flex-direction: column;
-  border-left: 1px solid var(--line); background: var(--term-bg); color: var(--term-ink); }
-.term-head { display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 46px; flex: 0 0 auto;
-  background: var(--term-bar); border-bottom: 1px solid var(--line-soft); }
-.term-head-title { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700;
-  letter-spacing: 0.04em; color: var(--term-ink); white-space: nowrap; }
-.term-flex { flex: 1; }
-.term-host { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--font-mono);
-  font-size: 11.5px; color: oklch(0.78 0.012 175); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-close { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 auto; border: 0;
-  border-radius: var(--r-xs); background: transparent; color: oklch(0.7 0.012 175); cursor: pointer; }
-.term-close:hover { background: oklch(1 0 0 / 0.08); color: var(--term-ink); }
-.term-tabs { display: flex; gap: 4px; padding: 8px 10px; flex: 0 0 auto; overflow-x: auto;
-  border-bottom: 1px solid var(--line-soft); background: var(--term-bar); }
-.term-tabs button { flex: 0 0 auto; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 4px 10px; border: 1px solid transparent; border-radius: 999px; background: transparent;
-  color: oklch(0.7 0.012 175); font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; }
-.term-tabs button:hover { color: var(--term-ink); }
-.term-tabs button.on { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-bright); }
-.term-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0 16px; }
-.term-empty { padding: 28px 16px; color: oklch(0.6 0.012 175); font-size: 12.5px; text-align: center; }
-.term-entry { padding: 7px 14px 9px; border-left: 2px solid transparent; }
-.term-entry.is-failed { border-left-color: var(--danger); }
-.term-entry.is-running { border-left-color: var(--accent); }
-.term-cmd { display: flex; align-items: baseline; gap: 7px; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
-.term-prompt { flex: 0 0 auto; color: var(--accent-bright); font-weight: 700; }
-.term-cmd-text { flex: 1; min-width: 0; color: oklch(0.88 0.02 150); white-space: pre-wrap; word-break: break-word; }
-.term-cmd-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
-  color: oklch(0.55 0.012 175); font-size: 10.5px; }
-.term-from { max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-out { margin: 5px 0 0; padding: 0 0 0 15px; color: oklch(0.8 0.012 175); font-family: var(--font-mono);
-  font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
-  max-height: 320px; overflow: auto; }
-.term-err { color: oklch(0.8 0.1 25); }
-.term-mute { color: oklch(0.55 0.012 175); }
-.term-status { margin-top: 4px; padding-left: 15px; color: oklch(0.55 0.012 175);
-  font-family: var(--font-mono); font-size: 10.5px; }
-.term-entry.is-failed .term-status { color: var(--danger); }
-.term-running-line { display: flex; align-items: center; gap: 7px; margin-top: 5px; padding-left: 15px;
-  color: oklch(0.65 0.012 175); font-size: 11.5px; }
-.term-cursor { width: 7px; height: 13px; background: var(--accent-bright); animation: term-blink 1s steps(1) infinite; }
-@keyframes term-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
-/* room-head 上的终端开关 */
-.term-toggle { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted);
-  font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.term-toggle:hover { border-color: var(--accent-line); color: var(--ink); }
-.term-toggle.on { border-color: var(--accent-line); background: var(--accent-faint); color: var(--accent-bright); }
 
 .sidebar { height: 100vh; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px;
   background: var(--bg-2); border-right: 1px solid var(--line); }

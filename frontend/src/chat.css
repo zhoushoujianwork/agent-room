@@ -119,15 +119,21 @@
 
 /* ── command card ────────────────────────────────────────────────── */
 .cmd { align-self: stretch; width: min(100%, var(--rail)); margin: 0 auto; border: 1px solid var(--line);
-  border-radius: var(--r-md); background: var(--term-bg); overflow: hidden; box-shadow: var(--shadow); }
+  border-radius: var(--r-md); background: var(--term-bg); overflow: hidden; box-shadow: var(--shadow); position: relative; }
 .cmd.is-ok { border-color: var(--accent-line); }
 .cmd.is-failed { border-color: var(--danger-soft); }
+.cmd.is-stopped { border-color: var(--warn-soft); }
 .cmd.is-running { border-color: var(--line); }
 /* cmd-bar 是收起/展开的切换按钮:命令卡片默认收起成这一行摘要。 */
 .cmd-bar { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 13px; background: var(--term-bar);
   border: 0; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; font: inherit; text-align: left; cursor: pointer; }
+.cmd-bar-busy { padding-right: 92px; }
 .cmd-bar:hover { background: color-mix(in oklch, var(--term-bar) 86%, white); }
 .cmd-bar[aria-expanded="false"] { border-bottom: 0; }
+.cmd-stop { position: absolute; top: 7px; right: 11px; display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--warn-soft);
+  background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 600; cursor: pointer; }
+.cmd-stop:hover { border-color: var(--warn); }
 .cmd-bar > svg:last-child { color: oklch(0.6 0.012 175); flex: 0 0 auto; }
 .cmd-id { min-width: 0; }
 .cmd-snippet { min-width: 0; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -608,7 +614,6 @@
 .shell .room-switch-join-btn,
 .shell .side-add-agent,
 .shell .attach-btn,
-.shell .term-toggle,
 .shell .bubble-reply-btn,
 .shell .perm-btn,
 .shell .btn {
@@ -624,7 +629,6 @@
 .shell .room-switch-join-btn:hover,
 .shell .side-add-agent:hover,
 .shell .attach-btn:hover:not(:disabled),
-.shell .term-toggle:hover,
 .shell .bubble-reply-btn:hover,
 .shell .btn:hover:not(:disabled) {
   border-color: var(--accent-line);
@@ -652,7 +656,6 @@
 }
 
 .shell .side-dl-tabs button.on,
-.shell .term-toggle.on,
 .shell .sticky-chip,
 .shell .live-pill.on,
 .shell .agent-mgr-room,

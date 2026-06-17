@@ -38,6 +38,22 @@ func TestRunnerCapturesNonZeroExit(t *testing.T) {
 	}
 }
 
+func TestRunnerTreatsCanceledContextAsCommandResult(t *testing.T) {
+	runner := NewRunner("", "", time.Second, 1024)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := runner.Run(ctx, models.CommandRunRequest{
+		Command: "echo should-not-run",
+	})
+	if err != nil {
+		t.Fatalf("Run returned setup error for canceled context: %v", err)
+	}
+	if result.ExitCode != -1 {
+		t.Fatalf("ExitCode = %d, want -1", result.ExitCode)
+	}
+}
+
 func TestDecodeShellOutput(t *testing.T) {
 	// "系统找不到指定的路径。" 的 GBK 编码（中文 Windows cmd 的典型 stderr）。
 	gbk := []byte{0xcf, 0xb5, 0xcd, 0xb3, 0xd5, 0xd2, 0xb2, 0xbb, 0xb5, 0xbd,

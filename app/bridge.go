@@ -38,6 +38,61 @@ func NewBridgeApp(cfg config.Config, logger *slog.Logger) *BridgeApp {
 	return &BridgeApp{cfg: cfg, logger: logger}
 }
 
+type executorRunState struct {
+	mu            sync.Mutex
+	currentID     string
+	currentCancel context.CancelFunc
+}
+
+func shouldCancelCommand(msg models.ChatMessage, currentCommandID string) bool {
+	if currentCommandID == "" {
+		return false
+	}
+	if msg.Type != models.MessageTypeControl {
+		return false
+	}
+	if strings.TrimSpace(msg.Metadata["operation"]) != models.ControlOperationStop {
+		return false
+	}
+	wantCommandID := strings.TrimSpace(msg.Metadata["command_id"])
+	if wantCommandID == "" {
+		wantCommandID = strings.TrimSpace(msg.Metadata["reply_to"])
+	}
+	if wantCommandID == "" {
+		return true
+	}
+	return wantCommandID == currentCommandID
+}
+
+func (s *executorRunState) register(commandID string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentID = commandID
+	s.currentCancel = cancel
+}
+
+func (s *executorRunState) clear(commandID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.currentID != commandID {
+		return
+	}
+	s.currentID = ""
+	s.currentCancel = nil
+}
+
+func (s *executorRunState) cancel(msg models.ChatMessage) bool {
+	s.mu.Lock()
+	if s.currentCancel == nil || !shouldCancelCommand(msg, s.currentID) {
+		s.mu.Unlock()
+		return false
+	}
+	cancel := s.currentCancel
+	s.mu.Unlock()
+	cancel()
+	return true
+}
+
 func (a *BridgeApp) Run(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -293,10 +348,15 @@ func (a *BridgeApp) runExecutor(ctx context.Context) error {
 		// Windows 控制台写阻塞 3 分钟、期间整条连接假死的事故。
 		cmds := make(chan models.ChatMessage, 16)
 		workerDone := make(chan struct{})
+		runState := &executorRunState{}
 		go func() {
 			defer close(workerDone)
 			for msg := range cmds {
-				a.executeAndReport(ctx, commandExecutor, label, msg, writeJSON)
+				cmdCtx, cancel := context.WithCancel(ctx)
+				runState.register(msg.ID, cancel)
+				a.executeAndReport(cmdCtx, commandExecutor, label, msg, writeJSON)
+				runState.clear(msg.ID)
+				cancel()
 			}
 		}()
 		defer func() {
@@ -320,6 +380,18 @@ func (a *BridgeApp) runExecutor(ctx context.Context) error {
 			}
 			if _, err := chatService.Add(ctx, msg.RoomID, msg); err != nil {
 				a.logger.Warn("store incoming message failed", slog.Any("error", err))
+			}
+			if msg.Type == models.MessageTypeControl &&
+				msg.IsAddressedTo(a.cfg.AgentID) &&
+				strings.TrimSpace(msg.Metadata["operation"]) == models.ControlOperationStop {
+				if runState.cancel(msg) {
+					a.logger.Info("executor stop signal honored",
+						slog.String("room_id", msg.RoomID),
+						slog.String("from", msg.SenderID),
+						slog.String("command_id", strings.TrimSpace(msg.Metadata["command_id"])),
+					)
+				}
+				continue
 			}
 			if !commandExecutor.ShouldHandle(msg) {
 				continue
@@ -380,16 +452,22 @@ func (a *BridgeApp) executeAndReport(ctx context.Context, commandExecutor *execu
 		a.logger.Warn("write command result failed", slog.Any("error", err))
 		return
 	}
+	phase := "done"
+	content := "done"
+	if result.Metadata["stopped"] == "true" {
+		phase = "stopped"
+		content = "stopped"
+	}
 	if err := writeJSON(models.ChatMessage{
 		RoomID:     msg.RoomID,
 		Type:       models.MessageTypeTrace,
 		SenderID:   a.cfg.AgentID,
 		SenderKind: models.SenderKindAgent,
 		TargetID:   msg.SenderID,
-		Content:    "done",
+		Content:    content,
 		CreatedAt:  time.Now().UTC(),
 		Metadata: map[string]string{
-			"phase":       "done",
+			"phase":       phase,
 			"command_id":  msg.ID,
 			"provider":    executor.ProviderName,
 			"label":       label,

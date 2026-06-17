@@ -61,14 +61,19 @@ func (e *Executor) Execute(ctx context.Context, msg models.ChatMessage) models.C
 		Shell: strings.TrimSpace(msg.Metadata["shell"]),
 	}
 	result, err := e.runner.Run(ctx, req)
-	if err != nil {
+	stopped := ctx.Err() != nil
+	if err != nil && !stopped {
 		return e.errorResult(msg, "runner_error", fmt.Sprintf("command failed before execution: %v", err))
+	}
+	if stopped && result.ExitCode == 0 {
+		result.ExitCode = -1
 	}
 
 	metadata := e.baseMetadata(msg)
 	metadata["exit_code"] = strconv.Itoa(result.ExitCode)
 	metadata["duration_ms"] = strconv.FormatInt(result.Duration.Milliseconds(), 10)
 	metadata["timed_out"] = strconv.FormatBool(result.TimedOut)
+	metadata["stopped"] = strconv.FormatBool(stopped)
 	metadata["stdout_truncated"] = strconv.FormatBool(result.StdoutTruncated)
 	metadata["stderr_truncated"] = strconv.FormatBool(result.StderrTruncated)
 	if req.WorkingDir != "" {

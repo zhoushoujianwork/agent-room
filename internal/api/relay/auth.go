@@ -50,7 +50,7 @@ func (s *Server) authEnabled() bool {
 	if strings.TrimSpace(s.sessionSecret()) == "" {
 		return false
 	}
-	return s.cfg.GitHub.Enabled() || s.cfg.BuildHub.Enabled()
+	return s.cfg.GitHub.Enabled() || s.cfg.SSO.Enabled()
 }
 
 // githubEnabled reports whether the GitHub OAuth provider specifically
@@ -62,7 +62,7 @@ func (s *Server) githubEnabled() bool {
 // ssoEnabled reports whether the external SSO provider specifically is
 // configured (app id + secret + authorize url + session secret).
 func (s *Server) ssoEnabled() bool {
-	return s.cfg.BuildHub.Enabled() && strings.TrimSpace(s.sessionSecret()) != ""
+	return s.cfg.SSO.Enabled() && strings.TrimSpace(s.sessionSecret()) != ""
 }
 
 // sessionSecret is the HMAC key used to sign our own session cookie.
@@ -175,7 +175,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssoClaims is the app-scoped JWT the external SSO provider returns.
-// HS256-signed with BUILDHUB_APP_SECRET, audience == BUILDHUB_APP_ID.
+// HS256-signed with AGENT_ROOM_SSO_APP_SECRET, audience == AGENT_ROOM_SSO_APP_ID.
 type ssoClaims struct {
 	Email      string `json:"email"`
 	Name       string `json:"name"`
@@ -198,13 +198,13 @@ func (s *Server) handleSSOLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	returnTo := safeReturnPath(r.URL.Query().Get("state"))
 	redirectURI := s.publicBaseURL(r) + "/auth/sso/callback"
-	authorize, err := url.Parse(s.cfg.BuildHub.AuthorizeURL)
+	authorize, err := url.Parse(s.cfg.SSO.AuthorizeURL)
 	if err != nil {
 		writeAuthError(w, http.StatusInternalServerError, "bad authorize url")
 		return
 	}
 	q := authorize.Query()
-	q.Set("app_id", s.cfg.BuildHub.AppID)
+	q.Set("app_id", s.cfg.SSO.AppID)
 	q.Set("redirect_uri", redirectURI)
 	q.Set("state", returnTo)
 	authorize.RawQuery = q.Encode()
@@ -231,7 +231,7 @@ func (s *Server) handleSSOCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	returnTo := safeReturnPath(r.URL.Query().Get("state"))
 
-	claims, err := parseSSOToken(s.cfg.BuildHub.AppSecret, s.cfg.BuildHub.AppID, appToken)
+	claims, err := parseSSOToken(s.cfg.SSO.AppSecret, s.cfg.SSO.AppID, appToken)
 	if err != nil {
 		s.logger.Warn("sso token verify failed", slog.Any("error", err))
 		writeAuthError(w, http.StatusBadGateway, "sso token verification failed")

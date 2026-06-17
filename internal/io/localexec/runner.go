@@ -88,11 +88,12 @@ func (r *Runner) Run(ctx context.Context, req models.CommandRunRequest) (models.
 	err := cmd.Run()
 	duration := time.Since(startedAt)
 	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded)
+	canceled := errors.Is(runCtx.Err(), context.Canceled)
 
 	exitCode := 0
 	if cmd.ProcessState != nil {
 		exitCode = cmd.ProcessState.ExitCode()
-	} else if timedOut {
+	} else if timedOut || canceled {
 		exitCode = -1
 	}
 
@@ -107,7 +108,7 @@ func (r *Runner) Run(ctx context.Context, req models.CommandRunRequest) (models.
 	}
 
 	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) && !timedOut {
+	if err != nil && !errors.As(err, &exitErr) && !timedOut && !canceled {
 		return result, err
 	}
 	return result, nil

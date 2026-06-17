@@ -84,7 +84,6 @@ import {
   SettingsPanel,
   SummaryPanel,
 } from "./panels";
-import { collectExecutorSessions, ExecutorTermPanel } from "./terminal";
 import { Icon } from "./icons";
 
 type AppView = "home" | "room" | "rooms" | "agents" | "admin";
@@ -827,25 +826,6 @@ function InnerApp() {
     [participants],
   );
 
-  /* ── Executor terminal sidebar ─────────────────────────────────── */
-  // 按执行器聚合的命令会话。房间里有 executor 在线或出现过 command 消息时,
-  // 右侧终端栏可用;默认自动展开,用户的开/关选择持久化在 localStorage。
-  const termSessions = useMemo(
-    () => collectExecutorSessions(messages, participants),
-    [messages, participants],
-  );
-  const termAvailable = termSessions.size > 0;
-  const [termPref, setTermPref] = useState<boolean | null>(() => {
-    const stored = localStorage.getItem("agent-room.term-open");
-    return stored === null ? null : stored === "1";
-  });
-  const termOpen = termAvailable && !gatedBlocked && (termPref ?? true);
-  function toggleTerm() {
-    const next = !termOpen;
-    setTermPref(next);
-    localStorage.setItem("agent-room.term-open", next ? "1" : "0");
-  }
-
   /* ── Composer handlers ─────────────────────────────────────────── */
 
   // 附件随房间走:切房间时丢弃别的房间里没发出去的图(字节已在 relay,但
@@ -1101,13 +1081,14 @@ function InnerApp() {
   // message. replyTo, when known (from the agent's trace stream), pins the
   // stop to that exact generation; omitting it cancels whatever the agent is
   // currently running. The bridge ignores stops that match nothing.
-  function stopGeneration(targetID: string, replyTo?: string) {
+  function stopGeneration(targetID: string, replyTo?: string, commandID?: string) {
     if (!roomID || !targetID) return;
     const metadata: Record<string, string> = {
       operation: "stop",
       source: "web",
     };
     if (replyTo) metadata.reply_to = replyTo;
+    if (commandID) metadata.command_id = commandID;
     const msg: ChatMessage = {
       room_id: roomID,
       type: "control",
@@ -1124,7 +1105,7 @@ function InnerApp() {
     } else {
       postMessage(roomID, msg).catch(() => showToast("Stop failed"));
     }
-    endAwait();
+    if (!commandID || awaitingTargetRef.current === targetID) endAwait();
   }
 
   // replyPermission 回应一条权限审批请求(phase=permission_request 的 trace)。
@@ -1578,7 +1559,7 @@ function InnerApp() {
 
   return (
     <>
-      <div className={termOpen ? "shell shell-term" : "shell"}>
+      <div className="shell">
         <RoomSidebar
           room={room}
           roomID={roomID}
@@ -1608,16 +1589,6 @@ function InnerApp() {
             onRename={renameRoom}
             headerRight={
               <>
-                {termAvailable && (
-                  <button
-                    type="button"
-                    className={`term-toggle${termOpen ? " on" : ""}`}
-                    onClick={toggleTerm}
-                    title={termOpen ? "收起执行器终端" : "展开执行器终端"}
-                  >
-                    <Icon name="terminal" size={15} /> 终端
-                  </button>
-                )}
                 <HeaderAuthSlot />
               </>
             }
@@ -1689,6 +1660,7 @@ function InnerApp() {
                             key={`command-${group.key}-${index}`}
                             messages={group.items}
                             dark={dark}
+                            onStop={stopGeneration}
                           />
                         );
                       }
@@ -1788,13 +1760,6 @@ function InnerApp() {
             </section>
           )}
         </main>
-        {termOpen && (
-          <ExecutorTermPanel
-            sessions={termSessions}
-            participants={participants}
-            onClose={toggleTerm}
-          />
-        )}
       </div>
       {confirm && (
         <ConfirmModal

@@ -426,12 +426,12 @@ func TestAccessRequestDuplicatePending(t *testing.T) {
 // newSSOServer builds a server with only external SSO configured (no
 // GitHub). The session secret is shared via GitHubConfig.SessionSecret,
 // which is how config.Load wires AGENT_ROOM_SESSION_SECRET.
-func newSSOServer(t *testing.T, sessionSecret string, bh config.BuildHubConfig) *Server {
+func newSSOServer(t *testing.T, sessionSecret string, sso config.ExternalSSOConfig) *Server {
 	t.Helper()
 	store := memory.NewStore()
 	cfg := config.Config{
-		GitHub:   config.GitHubConfig{SessionSecret: sessionSecret, CookieName: "agent_room_session"},
-		BuildHub: bh,
+		GitHub: config.GitHubConfig{SessionSecret: sessionSecret, CookieName: "agent_room_session"},
+		SSO:    sso,
 	}
 	return NewServer(cfg, chat.NewService(store), store, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
@@ -457,7 +457,7 @@ func ssoAppToken(t *testing.T, appSecret, appID, login string) string {
 }
 
 func TestSSOMeAdvertisesLoginURL(t *testing.T) {
-	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.BuildHubConfig{
+	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.ExternalSSOConfig{
 		AppID:     "agent-room.example.com",
 		AppSecret: "app-secret-xyz", AuthorizeURL: "https://sso.example.com/api/v1/auth/external/authorize",
 	})
@@ -481,7 +481,7 @@ func TestSSOMeAdvertisesLoginURL(t *testing.T) {
 }
 
 func TestSSOLoginRedirectsToAuthorize(t *testing.T) {
-	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.BuildHubConfig{
+	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.ExternalSSOConfig{
 		AppID: "myapp", AppSecret: "app-secret-xyz",
 		AuthorizeURL: "https://sso.example.com/api/v1/auth/external/authorize",
 	})
@@ -501,7 +501,7 @@ func TestSSOCallbackMintsSessionCookie(t *testing.T) {
 	secret := "secret-32-bytes-or-so-here-12345"
 	appSecret := "app-secret-xyz"
 	appID := "myapp"
-	s := newSSOServer(t, secret, config.BuildHubConfig{
+	s := newSSOServer(t, secret, config.ExternalSSOConfig{
 		AppID: appID, AppSecret: appSecret,
 		AuthorizeURL: "https://sso.example.com/api/v1/auth/external/authorize",
 	})
@@ -544,7 +544,7 @@ func TestSSOCallbackMintsSessionCookie(t *testing.T) {
 }
 
 func TestSSOCallbackRejectsBadSignature(t *testing.T) {
-	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.BuildHubConfig{
+	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.ExternalSSOConfig{
 		AppID: "myapp", AppSecret: "real-secret",
 		AuthorizeURL: "https://sso.example.com/api/v1/auth/external/authorize",
 	})
@@ -561,7 +561,7 @@ func TestSSOCallbackRejectsBadSignature(t *testing.T) {
 func TestSSOOnlyRequiresSignInAndKeepsGitHubDisabled(t *testing.T) {
 	// SSO enabled, GitHub not. Anonymous create is rejected, and the GitHub
 	// login route stays disabled.
-	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.BuildHubConfig{
+	s := newSSOServer(t, "secret-32-bytes-or-so-here-12345", config.ExternalSSOConfig{
 		AppID: "myapp", AppSecret: "app-secret-xyz",
 		AuthorizeURL: "https://sso.example.com/api/v1/auth/external/authorize",
 	})

@@ -34,6 +34,12 @@ export function groupMessages(messages: ChatMessage[]): MessageGroup[] {
     const commandID = msg.metadata?.command_id;
     if (commandID) delegated.set(commandID, traceGroupKey(msg));
   }
+  const topLevelCommandIDs = new Set<string>();
+  for (const msg of messages) {
+    if (msg.type !== "command" && msg.type !== "command_result") continue;
+    const commandID = msg.metadata?.command_id || (msg.type === "command" ? msg.id : "") || "";
+    if (commandID && !delegated.has(commandID)) topLevelCommandIDs.add(commandID);
+  }
   const runsByStream = new Map<string, Map<string, ChatMessage[]>>();
   const stashRun = (streamKey: string, commandID: string, msg: ChatMessage) => {
     let runs = runsByStream.get(streamKey);
@@ -104,6 +110,14 @@ export function groupMessages(messages: ChatMessage[]): MessageGroup[] {
       const streamKey = commandID ? delegated.get(commandID) : undefined;
       if (streamKey) {
         stashRun(streamKey, commandID, msg);
+        continue;
+      }
+      if (commandID && topLevelCommandIDs.has(commandID)) {
+        const existing = commandIndexes.get(`command:${commandID}`);
+        if (existing !== undefined) {
+          const group = groups[existing];
+          if (group?.kind === "command") group.items.push(msg);
+        }
         continue;
       }
     }
@@ -304,7 +318,7 @@ export function ThinkingStream({
   // groupMessages 折进本流;delegate_exec 步骤据此原位渲染成默认收起的命令卡片。
   runs?: Map<string, ChatMessage[]>;
   dark: boolean;
-  onStop?: (targetID: string, replyTo?: string) => void;
+  onStop?: (targetID: string, replyTo?: string, commandID?: string) => void;
 }) {
   const first = traces[0];
   const last = traces[traces.length - 1];
@@ -431,7 +445,7 @@ export function ThinkingStream({
                     <Icon name="terminal" size={11} />
                   </span>
                   <div className="sev-body">
-                    <CommandRunCard messages={run} dark={dark} embedded />
+                    <CommandRunCard messages={run} dark={dark} embedded onStop={onStop} />
                   </div>
                 </li>
               );
@@ -536,19 +550,27 @@ export function CommandRunCard({
   messages,
   dark,
   embedded = false,
+  onStop,
 }: {
   messages: ChatMessage[];
   dark: boolean;
   // embedded:嵌在发起方 thinking 流里的窄版(去掉 rail 对齐宽度)。
   embedded?: boolean;
+  onStop?: (targetID: string, replyTo?: string, commandID?: string) => void;
 }) {
   const command = messages.find((m) => m.type === "command");
   const resultMessage = [...messages].reverse().find((m) => m.type === "command_result");
+  const terminalTrace = [...messages]
+    .reverse()
+    .find((m) => m.type === "trace" && ["done", "error", "stopped"].includes(m.metadata?.phase || ""));
   const result = resultMessage ? parseCommandResult(resultMessage) : null;
   const timedOut = resultMessage?.metadata?.timed_out === "true";
-  const ok = Boolean(resultMessage && !timedOut && result?.exitCode === "0");
-  const failed = Boolean(resultMessage && !ok);
-  const duration = durationMsLabel(resultMessage?.metadata?.duration_ms);
+  const terminalPhase = terminalTrace?.metadata?.phase || "";
+  const stopped = resultMessage?.metadata?.stopped === "true" || terminalPhase === "stopped";
+  const doneWithoutResult = !resultMessage && terminalPhase === "done";
+  const ok = Boolean((resultMessage && !stopped && !timedOut && result?.exitCode === "0") || doneWithoutResult);
+  const failed = Boolean((resultMessage && !stopped && !ok) || terminalPhase === "error");
+  const duration = durationMsLabel(resultMessage?.metadata?.duration_ms || terminalTrace?.metadata?.duration_ms);
   const commandID = command?.id || resultMessage?.metadata?.command_id || "pending";
   const source = command?.sender_id || resultMessage?.target_id || "room";
   const target = command?.target_id || resultMessage?.sender_id || "Bridge";
@@ -558,7 +580,8 @@ export function CommandRunCard({
   const targetTint = agentTint(hueFromID(target), dark);
   const [tab, setTab] = useState<"stdout" | "stderr">("stdout");
   const hasStderr = Boolean(result?.stderr && result.stderr.trim().length > 0);
-  const running = !resultMessage;
+  const running = !resultMessage && !terminalTrace;
+  const canStop = Boolean(running && onStop && target && commandID !== "pending");
   // 命令卡片默认收起成一行摘要(命令 + 状态 + 耗时),点击展开完整输入输出;
   // 运行中的命令在收起态也能从状态 chip 看到 spinner。
   const [open, setOpen] = useState(false);
@@ -566,11 +589,11 @@ export function CommandRunCard({
 
   return (
     <div
-      className={`cmd ${ok ? "is-ok" : failed ? "is-failed" : "is-running"}${embedded ? " cmd-embedded" : ""}`}
+      className={`cmd ${ok ? "is-ok" : stopped ? "is-stopped" : failed ? "is-failed" : "is-running"}${embedded ? " cmd-embedded" : ""}`}
     >
       <button
         type="button"
-        className="cmd-bar"
+        className={`cmd-bar${canStop ? " cmd-bar-busy" : ""}`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
@@ -598,8 +621,16 @@ export function CommandRunCard({
             <>
               <span className="cmd-spinner" /> running
             </>
+          ) : stopped ? (
+            <Chip tone="warn">
+              <Icon name="stop" size={12} /> stopped
+            </Chip>
           ) : failed ? (
             <Chip tone="danger">exit {result?.exitCode || "?"}</Chip>
+          ) : doneWithoutResult ? (
+            <Chip tone="ok">
+              <Icon name="check" size={12} /> done
+            </Chip>
           ) : (
             <Chip tone="ok">
               <Icon name="check" size={12} /> exit {result?.exitCode || "0"}
@@ -610,6 +641,16 @@ export function CommandRunCard({
         {open && timeout && <Chip tone="mono">timeout {timeout}</Chip>}
         <Icon name={open ? "chevronDown" : "chevronRight"} size={14} />
       </button>
+      {canStop && (
+        <button
+          type="button"
+          className="cmd-stop"
+          onClick={() => onStop?.(target, undefined, commandID)}
+          title="停止命令"
+        >
+          <Icon name="stop" size={13} /> 停止
+        </button>
+      )}
 
       {open && (
       <div className="cmd-body">

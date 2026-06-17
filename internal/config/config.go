@@ -45,7 +45,7 @@ type Config struct {
 	OpenCode  OpenCodeConfig
 	Exec      ExecConfig
 	GitHub    GitHubConfig
-	BuildHub  BuildHubConfig
+	SSO       ExternalSSOConfig
 	LLM       LLMConfig
 }
 
@@ -86,22 +86,22 @@ func (g GitHubConfig) Enabled() bool {
 		strings.TrimSpace(g.SessionSecret) != ""
 }
 
-// BuildHubConfig holds the optional external SSO configuration.
+// ExternalSSOConfig holds the optional external SSO configuration.
 // Like GitHub OAuth it is opt-in at deploy time and additive: when the
-// three BUILDHUB_* values are set (and a session secret exists to sign
+// three AGENT_ROOM_SSO_* values are set (and a session secret exists to sign
 // our own cookie), the /auth/sso/* routes come online as a SECOND login
 // provider.
-type BuildHubConfig struct {
-	AppID        string // BUILDHUB_APP_ID (also the JWT audience)
-	AppSecret    string // BUILDHUB_APP_SECRET (HS256 verify key for app_token)
-	AuthorizeURL string // BUILDHUB_SSO_AUTHORIZE_URL (platform authorize endpoint)
+type ExternalSSOConfig struct {
+	AppID        string // AGENT_ROOM_SSO_APP_ID (also the JWT audience)
+	AppSecret    string // AGENT_ROOM_SSO_APP_SECRET (HS256 verify key for app_token)
+	AuthorizeURL string // AGENT_ROOM_SSO_AUTHORIZE_URL (provider authorize endpoint)
 }
 
 // Enabled reports whether external SSO is fully configured.
-func (b BuildHubConfig) Enabled() bool {
-	return strings.TrimSpace(b.AppID) != "" &&
-		strings.TrimSpace(b.AppSecret) != "" &&
-		strings.TrimSpace(b.AuthorizeURL) != ""
+func (s ExternalSSOConfig) Enabled() bool {
+	return strings.TrimSpace(s.AppID) != "" &&
+		strings.TrimSpace(s.AppSecret) != "" &&
+		strings.TrimSpace(s.AuthorizeURL) != ""
 }
 
 // LLMConfig holds the optional external LLM HTTP API used by the relay to
@@ -225,10 +225,10 @@ func Load() Config {
 			SessionSecret: envString("AGENT_ROOM_SESSION_SECRET", ""),
 			CookieName:    envString("AGENT_ROOM_COOKIE_NAME", "agent_room_session"),
 		},
-		BuildHub: BuildHubConfig{
-			AppID:        envString("BUILDHUB_APP_ID", ""),
-			AppSecret:    envString("BUILDHUB_APP_SECRET", ""),
-			AuthorizeURL: envString("BUILDHUB_SSO_AUTHORIZE_URL", ""),
+		SSO: ExternalSSOConfig{
+			AppID:        envString("AGENT_ROOM_SSO_APP_ID", ""),
+			AppSecret:    envString("AGENT_ROOM_SSO_APP_SECRET", ""),
+			AuthorizeURL: envString("AGENT_ROOM_SSO_AUTHORIZE_URL", ""),
 		},
 		LLM: LLMConfig{
 			APIKey:          envString("LLM_API_KEY", ""),

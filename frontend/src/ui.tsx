@@ -176,8 +176,8 @@ export function TopBrand({ right }: { right?: ReactNode }) {
   );
 }
 
-// SignInPill is the provider-aware, optional login affordance. SSO (Build
-// External SSO and GitHub share the same anonymous-first model: the pill
+// SignInPill is the provider-aware, optional login affordance. External SSO
+// and GitHub share the same anonymous-first model: the pill
 // is never forced — clicking it starts an external login that returns a
 // session cookie. Lives here (shared primitives) so both home.tsx and
 // shell.tsx use it without a circular import.
