@@ -88,13 +88,13 @@ func (g GitHubConfig) Enabled() bool {
 
 // ExternalSSOConfig holds the optional external SSO configuration.
 // Like GitHub OAuth it is opt-in at deploy time and additive: when the
-// three AGENT_ROOM_SSO_* values are set (and a session secret exists to sign
-// our own cookie), the /auth/sso/* routes come online as a SECOND login
-// provider.
+// three AGENT_ROOM_SSO_* values (or Build Hub's BUILDHUB_* aliases) are set
+// and a session secret exists to sign our own cookie, the /auth/sso/* routes
+// come online as a SECOND login provider.
 type ExternalSSOConfig struct {
-	AppID        string // AGENT_ROOM_SSO_APP_ID (also the JWT audience)
-	AppSecret    string // AGENT_ROOM_SSO_APP_SECRET (HS256 verify key for app_token)
-	AuthorizeURL string // AGENT_ROOM_SSO_AUTHORIZE_URL (provider authorize endpoint)
+	AppID        string // AGENT_ROOM_SSO_APP_ID / BUILDHUB_APP_ID (also the JWT audience)
+	AppSecret    string // AGENT_ROOM_SSO_APP_SECRET / BUILDHUB_APP_SECRET (HS256 verify key)
+	AuthorizeURL string // AGENT_ROOM_SSO_AUTHORIZE_URL / BUILDHUB_SSO_AUTHORIZE_URL
 }
 
 // Enabled reports whether external SSO is fully configured.
@@ -226,9 +226,9 @@ func Load() Config {
 			CookieName:    envString("AGENT_ROOM_COOKIE_NAME", "agent_room_session"),
 		},
 		SSO: ExternalSSOConfig{
-			AppID:        envString("AGENT_ROOM_SSO_APP_ID", ""),
-			AppSecret:    envString("AGENT_ROOM_SSO_APP_SECRET", ""),
-			AuthorizeURL: envString("AGENT_ROOM_SSO_AUTHORIZE_URL", ""),
+			AppID:        envStringAny([]string{"AGENT_ROOM_SSO_APP_ID", "BUILDHUB_APP_ID"}, ""),
+			AppSecret:    envStringAny([]string{"AGENT_ROOM_SSO_APP_SECRET", "BUILDHUB_APP_SECRET"}, ""),
+			AuthorizeURL: envStringAny([]string{"AGENT_ROOM_SSO_AUTHORIZE_URL", "BUILDHUB_SSO_AUTHORIZE_URL"}, ""),
 		},
 		LLM: LLMConfig{
 			APIKey:          envString("LLM_API_KEY", ""),
@@ -259,6 +259,15 @@ func SplitList(raw string) []string {
 func envString(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return fallback
+}
+
+func envStringAny(keys []string, fallback string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
 	return fallback
 }
