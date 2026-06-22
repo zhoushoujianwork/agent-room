@@ -2,19 +2,19 @@
 
 :root {
   --accent-bright: var(--accent);
-  --accent-faint: color-mix(in srgb, var(--accent) 9%, transparent);
-  --accent-line: color-mix(in srgb, var(--accent) 54%, transparent);
+  --accent-faint: color-mix(in srgb, var(--accent) 11%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 58%, transparent);
   --accent-ink: var(--bg);
 
-  --bg-2: color-mix(in srgb, var(--bg) 78%, var(--panel));
+  --bg-2: color-mix(in srgb, var(--bg) 62%, var(--panel));
   --surface: var(--panel);
   --surface-2: var(--panel-strong);
-  --surface-3: color-mix(in srgb, var(--panel-strong) 82%, var(--lit));
-  --line: var(--ghost);
-  --line-soft: color-mix(in srgb, var(--ghost) 58%, transparent);
-  --ink: var(--lit);
-  --muted: var(--dim);
-  --faint: color-mix(in srgb, var(--dim) 72%, var(--bg));
+  --surface-3: color-mix(in srgb, var(--panel-strong) 72%, var(--lit));
+  --line: color-mix(in srgb, var(--ghost) 84%, var(--bg));
+  --line-soft: color-mix(in srgb, var(--ghost) 44%, transparent);
+  --ink: var(--text, var(--lit));
+  --muted: var(--text-muted, var(--dim));
+  --faint: var(--text-faint, color-mix(in srgb, var(--dim) 88%, var(--bg)));
   --danger: var(--err);
   --danger-soft: color-mix(in srgb, var(--err) 16%, transparent);
   --warn: color-mix(in srgb, var(--accent) 62%, var(--lit));
@@ -22,8 +22,8 @@
   --term-bg: var(--bg);
   --term-bar: var(--panel);
   --term-ink: var(--lit);
-  --shadow: 0 16px 44px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(247, 255, 255, 0.10);
-  --shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(247, 255, 255, 0.08);
+  --shadow: 0 16px 44px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(248, 254, 255, 0.12);
+  --shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(248, 254, 255, 0.10);
 
   --r-xs: 6px; --r-sm: 7px; --r-md: var(--radius); --r-lg: var(--radius); --r-xl: var(--radius);
   --pad: 16px;

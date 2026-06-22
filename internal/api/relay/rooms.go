@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -227,9 +228,10 @@ func (s *Server) handlePatchRoom(w http.ResponseWriter, r *http.Request, roomID 
 		return
 	}
 	var body struct {
-		Title *string `json:"title"`
-		Gated *bool   `json:"gated"`
-		Ended *bool   `json:"ended"`
+		Title     *string `json:"title"`
+		GitHubURL *string `json:"github_url"`
+		Gated     *bool   `json:"gated"`
+		Ended     *bool   `json:"ended"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
@@ -247,6 +249,14 @@ func (s *Server) handlePatchRoom(w http.ResponseWriter, r *http.Request, roomID 
 		} else {
 			room.Title = &title
 		}
+	}
+	if body.GitHubURL != nil {
+		githubURL, err := normalizeGitHubURL(*body.GitHubURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		room.GitHubURL = githubURL
 	}
 	if body.Gated != nil {
 		room.Gated = *body.Gated
@@ -295,4 +305,62 @@ func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request, roomID
 // callers to know which one they hold.
 func isNotFound(err error) bool {
 	return errors.Is(err, sqlite.ErrNotFound) || errors.Is(err, memory.ErrNotFound)
+}
+
+func normalizeGitHubURL(raw string) (*string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	if len(value) > 2048 {
+		return nil, errors.New("github_url is too long")
+	}
+	if strings.HasPrefix(value, "git@github.com:") {
+		value = strings.TrimPrefix(value, "git@github.com:")
+		value = strings.TrimSuffix(value, ".git")
+		value = "https://github.com/" + value
+	} else if !strings.Contains(value, "://") {
+		if strings.HasPrefix(value, "github.com/") || strings.HasPrefix(value, "www.github.com/") {
+			value = "https://" + value
+		} else if isGitHubPath(value) {
+			value = "https://github.com/" + value
+		} else {
+			return nil, errors.New("github_url must point to github.com")
+		}
+	}
+
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return nil, errors.New("github_url must be a valid GitHub URL")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "github.com" && host != "www.github.com" {
+		return nil, errors.New("github_url must point to github.com")
+	}
+	if u.Path == "" || u.Path == "/" {
+		return nil, errors.New("github_url must include a GitHub path")
+	}
+	u.Scheme = "https"
+	u.Host = "github.com"
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	normalized := strings.TrimRight(u.String(), "/")
+	return &normalized, nil
+}
+
+func isGitHubPath(value string) bool {
+	if strings.HasPrefix(value, "/") || strings.ContainsAny(value, " \t\r\n") {
+		return false
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		if parts[i] == "" || strings.HasPrefix(parts[i], ".") {
+			return false
+		}
+	}
+	return true
 }

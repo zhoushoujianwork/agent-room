@@ -116,7 +116,7 @@ export async function getRoom(roomID: string): Promise<Room | null> {
 
 export async function patchRoom(
   roomID: string,
-  patch: Partial<Pick<Room, "title" | "gated" | "ended">>,
+  patch: Partial<Pick<Room, "title" | "github_url" | "gated" | "ended">>,
 ): Promise<Room> {
   return sendJSON<Room>(`/v1/rooms/${encodeURIComponent(cleanRoom(roomID))}`, "PATCH", patch);
 }

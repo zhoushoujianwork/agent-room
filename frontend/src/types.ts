@@ -79,6 +79,7 @@ export interface Room {
   room_id: string;
   owner: string | null;
   title: string | null;
+  github_url: string | null;
   gated: boolean;
   ended: boolean;
   created_at: string;

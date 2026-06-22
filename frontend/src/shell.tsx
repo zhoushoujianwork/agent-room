@@ -37,6 +37,7 @@ interface RoomSidebarProps {
   onHome: () => void;
   onNewRoom: () => void;
   onSwitchRoom: (room: string) => void;
+  onOpenRoomNewTab: (room: string) => void;
   onForgetRoom: (roomID: string) => void;
   onCopyURL: () => void;
   onCopyID: () => void;
@@ -54,6 +55,7 @@ export function RoomSidebar({
   onHome,
   onNewRoom,
   onSwitchRoom,
+  onOpenRoomNewTab,
   onForgetRoom,
   onCopyURL,
   onCopyID,
@@ -82,6 +84,7 @@ export function RoomSidebar({
         roomID={roomID}
         roomRecords={roomRecords}
         onSwitch={onSwitchRoom}
+        onOpenNewTab={onOpenRoomNewTab}
         onNewRoom={onNewRoom}
         onForget={onForgetRoom}
         onCopyID={onCopyID}
@@ -465,6 +468,7 @@ interface RoomSwitcherProps {
   roomID: string;
   roomRecords: RoomRecord[];
   onSwitch: (room: string) => void;
+  onOpenNewTab: (room: string) => void;
   onNewRoom: () => void;
   onForget: (roomID: string) => void;
   onCopyID: () => void;
@@ -476,6 +480,7 @@ function RoomSwitcher({
   roomID,
   roomRecords,
   onSwitch,
+  onOpenNewTab,
   onNewRoom,
   onForget,
   onCopyID,
@@ -492,15 +497,16 @@ function RoomSwitcher({
   // shows (single-room empty state).
   const items = useMemo(() => {
     const rest = roomRecords.filter((r) => r.room !== roomID);
-    const current: RoomRecord =
-      roomRecords.find((r) => r.room === roomID) || {
-        room: roomID,
-        createdAt: "",
-        lastOpenedAt: "",
-        title: room.title ?? undefined,
-      };
+    const savedCurrent = roomRecords.find((r) => r.room === roomID);
+    const current: RoomRecord = {
+      room: roomID,
+      createdAt: savedCurrent?.createdAt || "",
+      lastOpenedAt: savedCurrent?.lastOpenedAt || "",
+      title: room.title ?? savedCurrent?.title,
+      githubURL: room.github_url ?? savedCurrent?.githubURL,
+    };
     return [current, ...rest];
-  }, [roomID, roomRecords, room.title]);
+  }, [room.github_url, room.title, roomID, roomRecords]);
 
   // Reset the highlighted row each time the menu opens.
   useEffect(() => {
@@ -555,6 +561,14 @@ function RoomSwitcher({
     setOpen(false);
   }
 
+  function submitJoinNewTab() {
+    const value = joinDraft.trim();
+    if (!value) return;
+    onOpenNewTab(value);
+    setJoinDraft("");
+    setOpen(false);
+  }
+
   return (
     <div className="side-room" ref={wrapRef}>
       <div className="room-switcher" onKeyDown={onMenuKeyDown}>
@@ -604,6 +618,27 @@ function RoomSwitcher({
                         <span>{isCurrent ? "当前房间" : relativeTime(rec.lastOpenedAt)}</span>
                       </span>
                     </button>
+                    {rec.githubURL && (
+                      <a
+                        className="room-switch-open room-github-link"
+                        href={rec.githubURL}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="打开 GitHub"
+                        aria-label="打开 GitHub"
+                      >
+                        <Icon name="github" size={13} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      className="room-switch-open"
+                      onClick={() => onOpenNewTab(rec.room)}
+                      title="新开页面打开"
+                      aria-label="新开页面打开"
+                    >
+                      <Icon name="arrowUpRight" size={13} />
+                    </button>
                     {!isCurrent && (
                       <button
                         type="button"
@@ -644,6 +679,15 @@ function RoomSwitcher({
                 aria-label="加入"
               >
                 <Icon name="chevronRight" size={15} />
+              </button>
+              <button
+                type="button"
+                className="room-switch-join-btn"
+                onClick={submitJoinNewTab}
+                title="新开页面打开"
+                aria-label="新开页面打开"
+              >
+                <Icon name="arrowUpRight" size={14} />
               </button>
             </div>
 
@@ -979,6 +1023,18 @@ export function RoomHeader({
               ended={room.ended}
               onRename={onRename}
             />
+            {room.github_url && (
+              <a
+                className="room-head-github"
+                href={room.github_url}
+                target="_blank"
+                rel="noreferrer"
+                title="打开 GitHub"
+                aria-label="打开 GitHub"
+              >
+                <Icon name="github" size={16} />
+              </a>
+            )}
             <button type="button" className="btn btn-primary room-share-btn" onClick={onCopyURL}>
               <Icon name="link" size={15} /> 分享房间
             </button>

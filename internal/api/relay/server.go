@@ -260,7 +260,8 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Title string `json:"title"`
+		Title     string `json:"title"`
+		GitHubURL string `json:"github_url"`
 	}
 	// Empty body is fine; only decode if there is something to decode.
 	if r.ContentLength != 0 {
@@ -281,6 +282,14 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	if title := strings.TrimSpace(body.Title); title != "" {
 		room.Title = &title
+	}
+	if strings.TrimSpace(body.GitHubURL) != "" {
+		githubURL, err := normalizeGitHubURL(body.GitHubURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		room.GitHubURL = githubURL
 	}
 
 	if s.rooms != nil {

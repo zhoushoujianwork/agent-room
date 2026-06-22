@@ -27,10 +27,12 @@ func TestRoomRoundTrip(t *testing.T) {
 
 	login := "alice"
 	title := "Daily standup"
+	githubURL := "https://github.com/zhoushoujianwork/agent_room"
 	room := models.Room{
 		ID:         "room-aaaa",
 		OwnerLogin: &login,
 		Title:      &title,
+		GitHubURL:  &githubURL,
 		Gated:      true,
 		Ended:      false,
 		CreatedAt:  time.Now().UTC().Truncate(time.Microsecond),
@@ -49,13 +51,18 @@ func TestRoomRoundTrip(t *testing.T) {
 	if got.Title == nil || *got.Title != title {
 		t.Fatalf("title = %v", got.Title)
 	}
+	if got.GitHubURL == nil || *got.GitHubURL != githubURL {
+		t.Fatalf("github_url = %v", got.GitHubURL)
+	}
 	if !got.Gated || got.Ended {
 		t.Fatalf("flags wrong: %+v", got)
 	}
 
 	// Update.
 	newTitle := "Standup v2"
+	newGitHubURL := "https://github.com/openai/codex"
 	got.Title = &newTitle
+	got.GitHubURL = &newGitHubURL
 	got.Ended = true
 	if err := store.UpdateRoom(ctx, *got); err != nil {
 		t.Fatalf("UpdateRoom: %v", err)
@@ -64,7 +71,7 @@ func TestRoomRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRoom after update: %v", err)
 	}
-	if again.Title == nil || *again.Title != newTitle || !again.Ended {
+	if again.Title == nil || *again.Title != newTitle || again.GitHubURL == nil || *again.GitHubURL != newGitHubURL || !again.Ended {
 		t.Fatalf("update did not persist: %+v", again)
 	}
 

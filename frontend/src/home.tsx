@@ -5,11 +5,12 @@ import { shortRoomID } from "./lib";
 import { useAuth } from "./auth";
 import type { AdminUser, AdminUsersReport, Room } from "./types";
 
-interface RoomRecord {
+export interface RoomRecord {
   room: string;
   createdAt: string;
   lastOpenedAt: string;
   title?: string;
+  githubURL?: string;
 }
 
 interface HomePageProps {
@@ -236,6 +237,7 @@ interface MyRoomsPageProps {
   onForgetRoomRecord: (roomID: string) => void;
   onCreateRoom: () => void;
   onEnterRoom: (room?: string) => void;
+  onOpenRoomNewTab: (room?: string) => void;
   onRoomDraftChange: (value: string) => void;
 }
 
@@ -251,6 +253,7 @@ export function MyRoomsPage({
   onForgetRoomRecord,
   onCreateRoom,
   onEnterRoom,
+  onOpenRoomNewTab,
   onRoomDraftChange,
 }: MyRoomsPageProps) {
   const { me, signOut } = useAuth();
@@ -354,6 +357,27 @@ export function MyRoomsPage({
                         <span>{formatRecordTime(record.lastOpenedAt)}</span>
                       </span>
                       <Icon name="chevronRight" size={15} />
+                    </button>
+                    {record.githubURL && (
+                      <a
+                        className="icon-btn icon-btn-ghost room-github-link"
+                        href={record.githubURL}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="打开 GitHub"
+                        aria-label="打开 GitHub"
+                      >
+                        <Icon name="github" size={15} />
+                      </a>
+                    )}
+                    <button
+                      className="icon-btn icon-btn-ghost"
+                      type="button"
+                      onClick={() => onOpenRoomNewTab(record.room)}
+                      title="新开页面打开"
+                      aria-label="新开页面打开"
+                    >
+                      <Icon name="arrowUpRight" size={15} />
                     </button>
                     <button
                       className="icon-btn icon-btn-ghost"
@@ -499,6 +523,7 @@ interface AdminPageProps {
   loadingMore: boolean;
   onLoadMore: () => void;
   onEnterRoom: (room?: string, audit?: boolean) => void;
+  onOpenRoomNewTab: (room?: string) => void;
   onRefresh: () => void;
   onRefreshUsers: () => void;
   onOpenHome: () => void;
@@ -513,6 +538,7 @@ export function AdminPage({
   loadingMore,
   onLoadMore,
   onEnterRoom,
+  onOpenRoomNewTab,
   onRefresh,
   onRefreshUsers,
   onOpenHome,
@@ -621,7 +647,7 @@ export function AdminPage({
 	                        type="button"
 	                        onClick={() => onEnterRoom(room.room_id, true)}
 	                        title={room.room_id}
-	                      >
+                      >
                         <span className="room-hash">
                           <Icon name="hash" size={14} />
                         </span>
@@ -630,6 +656,27 @@ export function AdminPage({
                           <span>{adminRoomMeta(room)}</span>
                         </span>
                         <Icon name="chevronRight" size={15} />
+                      </button>
+                      {room.github_url && (
+                        <a
+                          className="icon-btn icon-btn-ghost room-github-link"
+                          href={room.github_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="打开 GitHub"
+                          aria-label="打开 GitHub"
+                        >
+                          <Icon name="github" size={15} />
+                        </a>
+                      )}
+                      <button
+                        className="icon-btn icon-btn-ghost"
+                        type="button"
+                        onClick={() => onOpenRoomNewTab(room.room_id)}
+                        title="新开页面打开"
+                        aria-label="新开页面打开"
+                      >
+                        <Icon name="arrowUpRight" size={15} />
                       </button>
                     </li>
                   ))}
@@ -982,5 +1029,3 @@ function renderQuickStartCode(code: string, os: QuickStartOS): ReactNode {
     );
   });
 }
-
-export type { RoomRecord };

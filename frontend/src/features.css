@@ -62,6 +62,19 @@
 .perm-text strong svg { color: var(--faint); }
 .perm-text span { color: var(--faint); font-size: 12.5px; line-height: 1.5; }
 .perm.is-locked .perm-text strong { color: var(--muted); }
+.github-setting-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.github-setting-row input {
+  flex: 1 1 300px; min-width: 0; height: 38px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--ink); font-size: 13px;
+}
+.github-setting-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-faint); }
+.github-setting-row input:disabled { opacity: 0.62; }
+.github-readonly-link { display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+  align-self: flex-start; max-width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: var(--r-sm); background: var(--surface); color: var(--ink); text-decoration: none; }
+.github-readonly-link:hover { border-color: var(--accent-line); color: var(--accent-bright); background: var(--accent-faint); }
+.github-readonly-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12px; }
 
 .switch { flex: 0 0 auto; width: 42px; height: 24px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--surface-3); cursor: pointer; padding: 0; position: relative; transition: background 0.16s, border-color 0.16s; }

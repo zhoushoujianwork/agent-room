@@ -165,6 +165,40 @@ func baseReq() models.ProviderRequest {
 	}
 }
 
+func TestBuildOpenCodePromptIncludesReplyMetadata(t *testing.T) {
+	req := baseReq()
+	req.Input.Metadata = map[string]string{
+		"reply_to":      "msg-123",
+		"reply_sender":  "agent-a",
+		"reply_preview": "原因很清楚: ImagePullBackOff, 镜像拉不下来。",
+	}
+	req.History = []models.ChatMessage{
+		{
+			Type:       models.MessageTypeChat,
+			SenderID:   "bob",
+			SenderKind: models.SenderKindUser,
+			Content:    "收到",
+			Metadata: map[string]string{
+				"reply_to":      "msg-001",
+				"reply_sender":  "alice",
+				"reply_preview": "上一条被引用的内容",
+			},
+		},
+	}
+	prompt := buildOpenCodePrompt(req)
+	for _, want := range []string{
+		"reply_to=msg-123",
+		"reply_sender=agent-a",
+		`reply_preview="原因很清楚: ImagePullBackOff, 镜像拉不下来。"`,
+		"reply_to=msg-001",
+		`reply_preview="上一条被引用的内容"`,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
 // TestCompleteAggregatesText: 基础回路 —— 发 prompt, 收到两段 text part,
 // session.idle 结束 -> 聚合文本 = 两段拼接, 并触发对应 ProviderEventText。
 func TestCompleteAggregatesText(t *testing.T) {

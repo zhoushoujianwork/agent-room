@@ -668,6 +668,7 @@ interface SettingsPanelProps {
   roomURL: string;
   onCopyURL: () => void;
   onTitleSave: (title: string) => Promise<void>;
+  onGitHubSave: (url: string) => Promise<void>;
   onToggleGated: (next: boolean) => Promise<void>;
   onEnd: () => void;
   onClearHistory: () => void;
@@ -678,6 +679,7 @@ export function SettingsPanel({
   room,
   roomURL,
   onCopyURL,
+  onGitHubSave,
   onToggleGated,
   onEnd,
   onClearHistory,
@@ -692,6 +694,23 @@ export function SettingsPanel({
   // edit affordances below, while `admin && !isOwner` tunes the labels.
   const canManage = isOwner || admin;
   const ended = room.ended;
+  const [githubDraft, setGithubDraft] = useState(room.github_url || "");
+  const [githubSaving, setGithubSaving] = useState(false);
+  const githubChanged = githubDraft.trim() !== (room.github_url || "");
+
+  useEffect(() => {
+    setGithubDraft(room.github_url || "");
+  }, [room.github_url]);
+
+  async function saveGitHub(next = githubDraft) {
+    if (!canManage || ended || githubSaving) return;
+    setGithubSaving(true);
+    try {
+      await onGitHubSave(next.trim());
+    } finally {
+      setGithubSaving(false);
+    }
+  }
 
   return (
     <div className="panel-wrap settings">
@@ -704,6 +723,75 @@ export function SettingsPanel({
             <Icon name="copy" size={15} /> 复制
           </button>
         </div>
+      </section>
+
+      <section className="set-section">
+        <div className="set-section-head">
+          <h3>GitHub 推广</h3>
+          {room.github_url && (
+            <a
+              className="btn btn-ghost btn-sm"
+              href={room.github_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Icon name="github" size={14} /> 打开 GitHub
+            </a>
+          )}
+        </div>
+        <p>给房间挂一个项目仓库链接，标题和房间列表会显示 GitHub 图标。</p>
+        {canManage ? (
+          <div className="github-setting-row">
+            <input
+              value={githubDraft}
+              onChange={(event) => setGithubDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && githubChanged) {
+                  event.preventDefault();
+                  void saveGitHub();
+                }
+              }}
+              placeholder="owner/repo 或 https://github.com/owner/repo"
+              disabled={ended || githubSaving}
+              aria-label="GitHub 仓库链接"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void saveGitHub()}
+              disabled={ended || githubSaving || !githubChanged}
+            >
+              <Icon name="check" size={14} /> {githubSaving ? "保存中" : "保存"}
+            </button>
+            {room.github_url && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void saveGitHub("")}
+                disabled={ended || githubSaving}
+              >
+                <Icon name="x" size={14} /> 移除
+              </button>
+            )}
+          </div>
+        ) : room.github_url ? (
+          <a
+            className="github-readonly-link"
+            href={room.github_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="github" size={15} />
+            <span>{room.github_url}</span>
+            <Icon name="arrowUpRight" size={13} />
+          </a>
+        ) : (
+          <div className="lock-banner">
+            <Icon name="lock" size={15} />
+            <span>还没有配置 GitHub 链接。</span>
+          </div>
+        )}
       </section>
 
       {authEnabled && (

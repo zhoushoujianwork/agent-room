@@ -45,6 +45,48 @@ func TestBuildClaudePromptOmitsContextSectionWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestBuildClaudePromptIncludesReplyMetadata(t *testing.T) {
+	prompt := buildClaudePrompt(models.ProviderRequest{
+		RoomID:     "demo",
+		AgentID:    "agent-a",
+		AgentLabel: "Agent A",
+		Input: models.ChatMessage{
+			SenderID:   "bob",
+			SenderKind: models.SenderKindUser,
+			Content:    "@agent-a 这里能看到我要回复的内容吗",
+			Metadata: map[string]string{
+				"reply_to":      "msg-123",
+				"reply_sender":  "agent-a",
+				"reply_preview": "原因很清楚: ImagePullBackOff, 镜像拉不下来。",
+			},
+		},
+		History: []models.ChatMessage{
+			{
+				Type:       models.MessageTypeChat,
+				SenderID:   "bob",
+				SenderKind: models.SenderKindUser,
+				Content:    "收到",
+				Metadata: map[string]string{
+					"reply_to":      "msg-001",
+					"reply_sender":  "alice",
+					"reply_preview": "上一条被引用的内容",
+				},
+			},
+		},
+	}, false)
+	for _, want := range []string{
+		"reply_to=msg-123",
+		"reply_sender=agent-a",
+		`reply_preview="原因很清楚: ImagePullBackOff, 镜像拉不下来。"`,
+		"reply_to=msg-001",
+		`reply_preview="上一条被引用的内容"`,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
 // TestCompleteInterruptReturnsSentinel verifies that cancelling the parent
 // context mid-run surfaces ErrProviderInterrupted (deliberate stop) rather
 // than a generic failure or timeout error.

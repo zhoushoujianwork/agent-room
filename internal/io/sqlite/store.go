@@ -37,6 +37,7 @@ func migrate(db *sql.DB) error {
             id           TEXT PRIMARY KEY,
             owner_login  TEXT NULL,
             title        TEXT NULL,
+            github_url   TEXT NULL,
             gated        INTEGER NOT NULL DEFAULT 0,
             ended        INTEGER NOT NULL DEFAULT 0,
             created_at   TEXT NOT NULL
@@ -137,6 +138,9 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("sqlite migrate: %w", err)
 		}
+	}
+	if err := ensureColumn(db, "rooms", "github_url", `github_url TEXT NULL`); err != nil {
+		return err
 	}
 	for _, col := range []struct {
 		name string

@@ -10,6 +10,7 @@ type Room struct {
 	ID         string    `json:"room_id"`
 	OwnerLogin *string   `json:"owner"`
 	Title      *string   `json:"title"`
+	GitHubURL  *string   `json:"github_url"`
 	Gated      bool      `json:"gated"`
 	Ended      bool      `json:"ended"`
 	CreatedAt  time.Time `json:"created_at"`

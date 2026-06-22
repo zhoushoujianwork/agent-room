@@ -270,7 +270,10 @@ func TestPatchRoomOwnerOnly(t *testing.T) {
 	_ = json.NewDecoder(rr.Body).Decode(&room)
 
 	// Non-owner PATCH → 403.
-	payload, _ := json.Marshal(map[string]any{"title": "new title"})
+	payload, _ := json.Marshal(map[string]any{
+		"title":      "new title",
+		"github_url": "zhoushoujianwork/agent_room",
+	})
 	req = httptest.NewRequest(http.MethodPatch, "/v1/rooms/"+room.ID, bytes.NewReader(payload))
 	req.AddCookie(signedCookie(t, secret, "bob"))
 	rr = httptest.NewRecorder()
@@ -291,6 +294,18 @@ func TestPatchRoomOwnerOnly(t *testing.T) {
 	_ = json.NewDecoder(rr.Body).Decode(&updated)
 	if updated.Title == nil || *updated.Title != "new title" {
 		t.Fatalf("title = %v, want new title", updated.Title)
+	}
+	if updated.GitHubURL == nil || *updated.GitHubURL != "https://github.com/zhoushoujianwork/agent_room" {
+		t.Fatalf("github_url = %v", updated.GitHubURL)
+	}
+
+	payload, _ = json.Marshal(map[string]any{"github_url": "https://example.com/not-github"})
+	req = httptest.NewRequest(http.MethodPatch, "/v1/rooms/"+room.ID, bytes.NewReader(payload))
+	req.AddCookie(signedCookie(t, secret, "alice"))
+	rr = httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("invalid github_url PATCH = %d, want 400", rr.Code)
 	}
 }
 

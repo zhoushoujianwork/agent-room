@@ -459,12 +459,12 @@
 
 .shell .sidebar {
   border-right-color: var(--line);
-  box-shadow: inset -1px 0 0 rgba(241, 251, 252, 0.07);
+  box-shadow: inset -1px 0 0 rgba(248, 254, 255, 0.10);
 }
 
 .shell .room-head,
 .shell .composer {
-  background: rgba(5, 9, 12, 0.94);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px);
 }
 
@@ -596,7 +596,7 @@
 .shell .agent-config-key-row input,
 .shell .token-create-form input {
   border-color: var(--line);
-  background: rgba(13, 21, 25, 0.96);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
   color: var(--ink);
   font-family: var(--font-mono);
 }
@@ -619,7 +619,7 @@
 .shell .btn {
   border-color: var(--line);
   border-radius: var(--r-sm);
-  background: rgba(241, 251, 252, 0.055);
+  background: rgba(248, 254, 255, 0.07);
   color: var(--muted);
   font-family: var(--font-mono);
   box-shadow: none;
@@ -686,7 +686,7 @@
 
 .shell .room-tab:hover {
   border-color: var(--line);
-  background: rgba(241, 251, 252, 0.06);
+  background: rgba(248, 254, 255, 0.08);
   color: var(--ink);
 }
 
@@ -718,7 +718,7 @@
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(13, 21, 25, 0.94);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .shell .evt-rail {
@@ -777,7 +777,7 @@
 .shell .appr-pre,
 .shell .sev-detail {
   border-color: var(--line);
-  background: rgba(5, 9, 12, 0.92);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
   color: var(--term-ink);
 }
 
@@ -797,7 +797,7 @@
 
 .shell .stream-head,
 .shell .cmd-bar {
-  background: rgba(13, 21, 25, 0.96);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
 
 .shell .cmd-bar:hover {
@@ -848,7 +848,7 @@
 
 .shell .composer-hint kbd {
   border-color: var(--line);
-  background: rgba(241, 251, 252, 0.025);
+  background: rgba(248, 254, 255, 0.055);
   color: var(--muted);
 }
 
@@ -891,7 +891,7 @@
 
 .shell .agent-mention {
   border-color: var(--line);
-  background: rgba(241, 251, 252, 0.025);
+  background: rgba(248, 254, 255, 0.055);
   color: var(--accent-bright);
 }
 
@@ -948,7 +948,7 @@
 .shell .agent-mgr-provider,
 .shell .token-prefix {
   border: 1px solid var(--line);
-  background: rgba(241, 251, 252, 0.025);
+  background: rgba(248, 254, 255, 0.055);
   color: var(--muted);
 }
 
@@ -966,14 +966,14 @@
 
 .shell .mode-slave {
   border-color: var(--line);
-  background: rgba(241, 251, 252, 0.025);
+  background: rgba(248, 254, 255, 0.055);
   color: var(--muted);
 }
 
 .shell .dev-tweaks-chip,
 .shell .dev-tweaks {
   border-color: var(--line);
-  background: rgba(13, 21, 25, 0.92);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
   color: var(--muted);
 }
 

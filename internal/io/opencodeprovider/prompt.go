@@ -47,10 +47,10 @@ func buildOpenCodePrompt(req models.ProviderRequest) string {
 		if msg.Type == models.MessageTypePresence || msg.Type == models.MessageTypeTrace || msg.Type == models.MessageTypeControl {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("[%s/%s -> %s] %s\n", msg.SenderID, msg.SenderKind, targetLabel(msg.TargetID), msg.Content))
+		b.WriteString(fmt.Sprintf("[%s/%s -> %s] %s%s\n", msg.SenderID, msg.SenderKind, targetLabel(msg.TargetID), msg.Content, metadataSummary(msg.Metadata)))
 	}
 	b.WriteString("\nIncoming message to answer:\n")
-	b.WriteString(fmt.Sprintf("[%s/%s] %s\n", req.Input.SenderID, req.Input.SenderKind, req.Input.Content))
+	b.WriteString(fmt.Sprintf("[%s/%s] %s%s\n", req.Input.SenderID, req.Input.SenderKind, req.Input.Content, metadataSummary(req.Input.Metadata)))
 	if guide := attachmentGuide(req.Attachments); guide != "" {
 		b.WriteString(guide)
 	}
@@ -98,4 +98,32 @@ func targetLabel(target string) string {
 		return "room"
 	}
 	return target
+}
+
+func metadataSummary(metadata map[string]string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	usefulKeys := []string{"label", "provider", "mode", "protocol", "capabilities", "phase", "reply_to", "reply_sender"}
+	parts := make([]string, 0, len(usefulKeys)+1)
+	for _, key := range usefulKeys {
+		if value := strings.TrimSpace(metadata[key]); value != "" {
+			parts = append(parts, fmt.Sprintf("%s=%s", key, compactMetadataValue(value, 120)))
+		}
+	}
+	if value := strings.TrimSpace(metadata["reply_preview"]); value != "" {
+		parts = append(parts, fmt.Sprintf("reply_preview=%q", compactMetadataValue(value, 240)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " {" + strings.Join(parts, ", ") + "}"
+}
+
+func compactMetadataValue(value string, limit int) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if limit > 0 && len(value) > limit {
+		return value[:limit] + "...(truncated)"
+	}
+	return value
 }

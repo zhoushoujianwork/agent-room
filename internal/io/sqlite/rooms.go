@@ -17,18 +17,19 @@ var ErrNotFound = errors.New("not found")
 
 func (s *Store) GetRoom(ctx context.Context, roomID string) (*models.Room, error) {
 	row := s.db.QueryRowContext(ctx, `
-        SELECT id, owner_login, title, gated, ended, created_at
+        SELECT id, owner_login, title, github_url, gated, ended, created_at
         FROM rooms WHERE id = ?`, roomID)
 	return scanRoom(row)
 }
 
 func (s *Store) CreateRoom(ctx context.Context, room models.Room) error {
 	_, err := s.db.ExecContext(ctx, `
-        INSERT INTO rooms (id, owner_login, title, gated, ended, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)`,
+        INSERT INTO rooms (id, owner_login, title, github_url, gated, ended, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		room.ID,
 		nullableString(room.OwnerLogin),
 		nullableString(room.Title),
+		nullableString(room.GitHubURL),
 		boolToInt(room.Gated),
 		boolToInt(room.Ended),
 		room.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -42,10 +43,11 @@ func (s *Store) CreateRoom(ctx context.Context, room models.Room) error {
 func (s *Store) UpdateRoom(ctx context.Context, room models.Room) error {
 	res, err := s.db.ExecContext(ctx, `
         UPDATE rooms
-        SET owner_login = ?, title = ?, gated = ?, ended = ?
+        SET owner_login = ?, title = ?, github_url = ?, gated = ?, ended = ?
         WHERE id = ?`,
 		nullableString(room.OwnerLogin),
 		nullableString(room.Title),
+		nullableString(room.GitHubURL),
 		boolToInt(room.Gated),
 		boolToInt(room.Ended),
 		room.ID,
@@ -62,7 +64,7 @@ func (s *Store) UpdateRoom(ctx context.Context, room models.Room) error {
 
 func (s *Store) ListRooms(ctx context.Context, limit, offset int) ([]models.Room, error) {
 	query := `
-        SELECT id, owner_login, title, gated, ended, created_at
+        SELECT id, owner_login, title, github_url, gated, ended, created_at
         FROM rooms
         ORDER BY created_at DESC`
 	var args []any
@@ -219,7 +221,7 @@ func (s *Store) ListUserRooms(ctx context.Context, login string, limit, offset i
 		return []models.UserRoom{}, nil
 	}
 	query := `
-        SELECT r.id, r.owner_login, r.title, r.gated, r.ended, r.created_at, ur.last_opened_at
+        SELECT r.id, r.owner_login, r.title, r.github_url, r.gated, r.ended, r.created_at, ur.last_opened_at
         FROM user_rooms ur
         JOIN rooms r ON r.id = ur.room_id
         WHERE ur.login = ? AND ur.hidden = 0
@@ -406,11 +408,12 @@ func scanRoom(s scanner) (*models.Room, error) {
 		id         string
 		owner      sql.NullString
 		title      sql.NullString
+		githubURL  sql.NullString
 		gated      int
 		ended      int
 		createdRaw string
 	)
-	if err := s.Scan(&id, &owner, &title, &gated, &ended, &createdRaw); err != nil {
+	if err := s.Scan(&id, &owner, &title, &githubURL, &gated, &ended, &createdRaw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -434,6 +437,10 @@ func scanRoom(s scanner) (*models.Room, error) {
 		v := title.String
 		room.Title = &v
 	}
+	if githubURL.Valid {
+		v := githubURL.String
+		room.GitHubURL = &v
+	}
 	return room, nil
 }
 
@@ -442,12 +449,13 @@ func scanUserRoom(s scanner) (models.UserRoom, error) {
 		id            string
 		owner         sql.NullString
 		title         sql.NullString
+		githubURL     sql.NullString
 		gated         int
 		ended         int
 		createdRaw    string
 		lastOpenedRaw string
 	)
-	if err := s.Scan(&id, &owner, &title, &gated, &ended, &createdRaw, &lastOpenedRaw); err != nil {
+	if err := s.Scan(&id, &owner, &title, &githubURL, &gated, &ended, &createdRaw, &lastOpenedRaw); err != nil {
 		return models.UserRoom{}, fmt.Errorf("sqlite scan user_room: %w", err)
 	}
 	createdAt, err := time.Parse(time.RFC3339Nano, createdRaw)
@@ -474,6 +482,10 @@ func scanUserRoom(s scanner) (models.UserRoom, error) {
 	if title.Valid {
 		v := title.String
 		room.Title = &v
+	}
+	if githubURL.Valid {
+		v := githubURL.String
+		room.GitHubURL = &v
 	}
 	return room, nil
 }

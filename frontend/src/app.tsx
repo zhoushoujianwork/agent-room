@@ -151,6 +151,7 @@ function loadRoomRecords(): RoomRecord[] {
         createdAt: item.createdAt || item.lastOpenedAt || new Date().toISOString(),
         lastOpenedAt: item.lastOpenedAt || item.createdAt || new Date().toISOString(),
         title: item.title,
+        githubURL: typeof item.githubURL === "string" ? item.githubURL : undefined,
       }))
       .sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt))
       .slice(0, 30);
@@ -167,7 +168,12 @@ function saveRoomRecords(records: RoomRecord[]): RoomRecord[] {
   return next;
 }
 
-function upsertRoomRecord(records: RoomRecord[], room: string, title?: string | null): RoomRecord[] {
+function upsertRoomRecord(
+  records: RoomRecord[],
+  room: string,
+  title?: string | null,
+  githubURL?: string | null,
+): RoomRecord[] {
   const nextRoom = cleanRoom(room);
   const now = new Date().toISOString();
   const existing = records.find((item) => item.room === nextRoom);
@@ -176,6 +182,7 @@ function upsertRoomRecord(records: RoomRecord[], room: string, title?: string | 
     createdAt: existing?.createdAt || now,
     lastOpenedAt: now,
     title: title ?? existing?.title,
+    githubURL: githubURL ?? existing?.githubURL,
   };
   return saveRoomRecords([nextRecord, ...records.filter((item) => item.room !== nextRoom)]);
 }
@@ -187,6 +194,7 @@ function roomRecordsFromUserRooms(rooms: UserRoom[]): RoomRecord[] {
       createdAt: room.created_at,
       lastOpenedAt: room.last_opened_at || room.created_at,
       title: room.title ?? undefined,
+      githubURL: room.github_url ?? undefined,
     }))
     .sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt))
     .slice(0, 30);
@@ -516,6 +524,7 @@ function InnerApp() {
           room_id: roomID,
           owner: null,
           title: null,
+          github_url: null,
           gated: false,
           ended: false,
           created_at: new Date().toISOString(),
@@ -557,14 +566,16 @@ function InnerApp() {
     }
     if (appView === "room") {
       if (auditRoom !== roomID) {
-        setRoomRecords((records) => upsertRoomRecord(records, roomID, room?.title ?? undefined));
+        setRoomRecords((records) =>
+          upsertRoomRecord(records, roomID, room?.title ?? undefined, room?.github_url ?? undefined),
+        );
       }
       const desired = roomPath(roomID, tab);
       if (`${window.location.pathname}${window.location.search}` !== desired) {
         window.history.replaceState(null, "", desired);
       }
     }
-  }, [appView, auditRoom, roomID, room?.title, tab]);
+  }, [appView, auditRoom, roomID, room?.github_url, room?.title, tab]);
 
   /* ── WebSocket ────────────────────────────────────────────────── */
   useEffect(() => {
@@ -1170,6 +1181,18 @@ function InnerApp() {
     }
   }
 
+  function openRoomInNewTab(value?: string) {
+    const nextRoom = roomFromInput(value ?? roomDraft);
+    if (!nextRoom) {
+      showToast("Paste a room ID or link");
+      return;
+    }
+    const nextURL = roomPath(nextRoom);
+    if (!requireSignedIdentity(nextURL)) return;
+    const opened = window.open(nextURL, "_blank", "noopener,noreferrer");
+    if (!opened) showToast("浏览器阻止了新页面");
+  }
+
   async function createAndEnterRoom() {
     if (!requireSignedIdentity("/")) return;
     if (creatingRoom) return;
@@ -1323,10 +1346,26 @@ function InnerApp() {
     try {
       const updated = await patchRoom(roomID, { title: next });
       setRoom(updated);
-      setRoomRecords((records) => upsertRoomRecord(records, roomID, updated.title ?? undefined));
+      setRoomRecords((records) =>
+        upsertRoomRecord(records, roomID, updated.title ?? undefined, updated.github_url ?? undefined),
+      );
       showToast("房间已重命名");
     } catch {
       showToast("重命名失败");
+    }
+  }
+
+  async function saveRoomGitHubURL(next: string) {
+    if (!roomID || !room) return;
+    try {
+      const updated = await patchRoom(roomID, { github_url: next.trim() });
+      setRoom(updated);
+      setRoomRecords((records) =>
+        upsertRoomRecord(records, roomID, updated.title ?? undefined, updated.github_url ?? undefined),
+      );
+      showToast(updated.github_url ? "GitHub 链接已保存" : "GitHub 链接已移除");
+    } catch {
+      showToast("GitHub 链接保存失败");
     }
   }
 
@@ -1468,6 +1507,7 @@ function InnerApp() {
           loadingMore={adminLoadingMore}
           onLoadMore={loadMoreAdminRooms}
           onEnterRoom={enterRoom}
+          onOpenRoomNewTab={openRoomInNewTab}
           onRefresh={refreshAdminRooms}
           onRefreshUsers={refreshAdminUsers}
           onOpenHome={goHome}
@@ -1530,6 +1570,7 @@ function InnerApp() {
           onCopySavedRoomURL={copySavedRoomURL}
           onForgetRoomRecord={forgetRoomRecord}
           onEnterRoom={enterRoom}
+          onOpenRoomNewTab={openRoomInNewTab}
           onCreateRoom={createAndEnterRoom}
           onRoomDraftChange={setRoomDraft}
         />
@@ -1571,6 +1612,7 @@ function InnerApp() {
           onHome={goHome}
           onNewRoom={() => createAndEnterRoom()}
           onSwitchRoom={enterRoom}
+          onOpenRoomNewTab={openRoomInNewTab}
           onForgetRoom={forgetRoomRecord}
           onCopyURL={copyRoomURL}
           onCopyID={copyRoomID}
@@ -1752,6 +1794,7 @@ function InnerApp() {
                 roomURL={roomURL}
                 onCopyURL={copyRoomURL}
                 onTitleSave={renameRoom}
+                onGitHubSave={saveRoomGitHubURL}
                 onToggleGated={toggleGated}
                 onEnd={() => setConfirm("end")}
                 onClearHistory={() => setConfirm("clearHistory")}
