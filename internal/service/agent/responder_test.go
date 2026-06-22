@@ -84,6 +84,56 @@ func (p scriptedProvider) Complete(_ context.Context, _ models.ProviderRequest) 
 	return models.ProviderResponse{Content: p.content}, nil
 }
 
+type captureProvider struct {
+	req models.ProviderRequest
+}
+
+func (p *captureProvider) Name() string { return "capture" }
+
+func (p *captureProvider) Complete(_ context.Context, req models.ProviderRequest) (models.ProviderResponse, error) {
+	p.req = req
+	return models.ProviderResponse{Content: "captured"}, nil
+}
+
+func TestResponderReplyKeepsQuotedMessageOutsideHistoryLimit(t *testing.T) {
+	provider := &captureProvider{}
+	responder := NewResponder("alice", "", "", "", "", 2, 1, "", provider)
+	history := []models.ChatMessage{
+		{ID: "msg-quoted", Type: models.MessageTypeChat, SenderID: "alice", SenderKind: models.SenderKindAgent, Content: "full quoted content that would otherwise be outside the tail"},
+		{ID: "msg-old-1", Type: models.MessageTypeChat, SenderID: "bob", SenderKind: models.SenderKindUser, Content: "old 1"},
+		{ID: "msg-old-2", Type: models.MessageTypeChat, SenderID: "bob", SenderKind: models.SenderKindUser, Content: "old 2"},
+		{ID: "msg-tail-1", Type: models.MessageTypeChat, SenderID: "bob", SenderKind: models.SenderKindUser, Content: "tail 1"},
+		{ID: "msg-tail-2", Type: models.MessageTypeChat, SenderID: "bob", SenderKind: models.SenderKindUser, Content: "tail 2"},
+	}
+	_, err := responder.Reply(context.Background(), models.ChatMessage{
+		RoomID:         "demo",
+		SenderID:       "bob",
+		SenderKind:     models.SenderKindUser,
+		Content:        "这个问题你看得到吗",
+		ReplyRequested: true,
+		TurnBudget:     1,
+		Metadata: map[string]string{
+			"reply_to":      "msg-quoted",
+			"reply_preview": "truncated preview",
+		},
+	}, history, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	gotIDs := map[string]bool{}
+	for _, msg := range provider.req.History {
+		gotIDs[msg.ID] = true
+	}
+	for _, id := range []string{"msg-quoted", "msg-tail-1", "msg-tail-2"} {
+		if !gotIDs[id] {
+			t.Fatalf("provider history missing %s: %#v", id, provider.req.History)
+		}
+	}
+	if gotIDs["msg-old-1"] || gotIDs["msg-old-2"] {
+		t.Fatalf("provider history kept unrelated old messages: %#v", provider.req.History)
+	}
+}
+
 func TestResponderReplyRoutesMentionedAgentPeerWhenBudgetRemains(t *testing.T) {
 	responder := NewResponder("alice", "", "", "", "", 10, 1, "", scriptedProvider{
 		content: "@carol please introduce your runtime",

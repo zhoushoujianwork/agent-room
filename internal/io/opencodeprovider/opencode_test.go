@@ -168,30 +168,45 @@ func baseReq() models.ProviderRequest {
 func TestBuildOpenCodePromptIncludesReplyMetadata(t *testing.T) {
 	req := baseReq()
 	req.Input.Metadata = map[string]string{
-		"reply_to":      "msg-123",
+		"reply_to":      "msg-quoted",
 		"reply_sender":  "agent-a",
 		"reply_preview": "原因很清楚: ImagePullBackOff, 镜像拉不下来。",
 	}
 	req.History = []models.ChatMessage{
 		{
 			Type:       models.MessageTypeChat,
-			SenderID:   "bob",
-			SenderKind: models.SenderKindUser,
-			Content:    "收到",
-			Metadata: map[string]string{
-				"reply_to":      "msg-001",
-				"reply_sender":  "alice",
-				"reply_preview": "上一条被引用的内容",
-			},
+			ID:         "msg-quoted",
+			SenderID:   "agent-a",
+			SenderKind: models.SenderKindAgent,
+			Content:    "原因很清楚: ImagePullBackOff, 镜像拉不下来。镜像名: patsnap-dataprocess.tencentcloudcr.com/foo/bar:bad-tag",
 		},
 	}
 	prompt := buildOpenCodePrompt(req)
 	for _, want := range []string{
-		"reply_to=msg-123",
-		"reply_sender=agent-a",
-		`reply_preview="原因很清楚: ImagePullBackOff, 镜像拉不下来。"`,
-		"reply_to=msg-001",
-		`reply_preview="上一条被引用的内容"`,
+		"Quoted message context for the incoming reply:",
+		"reply_to: msg-quoted",
+		`if the user says "this", "that", "这个", or "上面"`,
+		"quoted_message: [agent-a/agent -> room] 原因很清楚: ImagePullBackOff, 镜像拉不下来。镜像名: patsnap-dataprocess.tencentcloudcr.com/foo/bar:bad-tag",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+func TestBuildOpenCodePromptFallsBackToReplyExcerpt(t *testing.T) {
+	req := baseReq()
+	req.Input.Metadata = map[string]string{
+		"reply_to":      "msg-too-old",
+		"reply_sender":  "agent-a",
+		"reply_preview": "短 preview",
+		"reply_excerpt": "更完整的引用内容，包含镜像名 patsnap-dataprocess.tencentcloudcr.com/data/flink:1.12.7-scala_2.11_clent_logback 和拼写错误 clent。",
+	}
+	prompt := buildOpenCodePrompt(req)
+	for _, want := range []string{
+		"Quoted message context for the incoming reply:",
+		"reply_to: msg-too-old",
+		"quoted_excerpt: 更完整的引用内容，包含镜像名 patsnap-dataprocess.tencentcloudcr.com/data/flink:1.12.7-scala_2.11_clent_logback 和拼写错误 clent。",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)

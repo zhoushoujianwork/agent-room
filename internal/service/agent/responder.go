@@ -68,7 +68,7 @@ func (r *Responder) Reply(ctx context.Context, msg models.ChatMessage, history [
 		AgentLabel:        r.agentLabel,
 		Capabilities:      r.capabilities,
 		Input:             msg,
-		History:           last(history, r.historyLimit),
+		History:           replyAwareHistory(history, r.historyLimit, msg),
 		Attachments:       resolveAttachments(msg, r.relayHTTPURL),
 		RoomSummary:       roomSummary,
 		ContextDoc:        r.contextDoc,
@@ -185,6 +185,77 @@ func resolveAttachments(msg models.ChatMessage, relayHTTPURL string) []models.Pr
 		})
 	}
 	return out
+}
+
+func replyAwareHistory(messages []models.ChatMessage, limit int, input models.ChatMessage) []models.ChatMessage {
+	tail := last(messages, limit)
+	replyTo := ""
+	if input.Metadata != nil {
+		replyTo = strings.TrimSpace(input.Metadata["reply_to"])
+	}
+	if replyTo == "" || containsReplyReference(tail, replyTo) {
+		return tail
+	}
+
+	targetKey := ""
+	for _, m := range messages {
+		if matchesReplyReference(m, replyTo) {
+			targetKey = historyKey(m)
+			break
+		}
+	}
+	if targetKey == "" {
+		return tail
+	}
+
+	keep := make(map[string]bool, len(tail)+1)
+	for _, m := range tail {
+		if key := historyKey(m); key != "" {
+			keep[key] = true
+		}
+	}
+	keep[targetKey] = true
+
+	out := make([]models.ChatMessage, 0, len(tail)+1)
+	for _, m := range messages {
+		if key := historyKey(m); key != "" && keep[key] {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func containsReplyReference(messages []models.ChatMessage, ref string) bool {
+	for _, m := range messages {
+		if matchesReplyReference(m, ref) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesReplyReference(msg models.ChatMessage, ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return false
+	}
+	if msg.ID == ref {
+		return true
+	}
+	if !msg.CreatedAt.IsZero() {
+		return msg.CreatedAt.Format(time.RFC3339Nano) == ref || msg.CreatedAt.Format(time.RFC3339) == ref
+	}
+	return false
+}
+
+func historyKey(msg models.ChatMessage) string {
+	if strings.TrimSpace(msg.ID) != "" {
+		return "id:" + strings.TrimSpace(msg.ID)
+	}
+	if !msg.CreatedAt.IsZero() {
+		return "at:" + msg.CreatedAt.Format(time.RFC3339Nano)
+	}
+	return ""
 }
 
 func last(messages []models.ChatMessage, limit int) []models.ChatMessage {

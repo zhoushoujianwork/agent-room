@@ -283,6 +283,12 @@ function messagePreview(message: ChatMessage): string {
   return "[消息]";
 }
 
+function messageExcerpt(message: ChatMessage): string {
+  const text = (message.content || "").trim();
+  if (text) return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
+  return messagePreview(message);
+}
+
 function mentionsViewer(message: ChatMessage, viewerID: string, me: Me): boolean {
   if (message.type !== "chat" || message.sender_id === viewerID) return false;
   const candidates = new Set<string>([viewerID]);
@@ -1046,6 +1052,7 @@ function InnerApp() {
       metadata.reply_to = replyTo.id || replyTo.created_at || messagePreview(replyTo);
       metadata.reply_sender = replyTo.sender_id || "";
       metadata.reply_preview = messagePreview(replyTo);
+      metadata.reply_excerpt = messageExcerpt(replyTo);
     }
     if (pendingAttachments.length > 0) {
       // 与 Go 侧 models.AttachmentRef 对偶的 JSON 数组;只发引用,字节已在平台。
