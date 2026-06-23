@@ -110,6 +110,30 @@ func TestBuildClaudePromptFallsBackToReplyExcerpt(t *testing.T) {
 	}
 }
 
+func TestBuildClaudePromptSkipsReplySectionWhenRelayInjectedContent(t *testing.T) {
+	prompt := buildClaudePrompt(models.ProviderRequest{
+		RoomID:     "demo",
+		AgentID:    "agent-a",
+		AgentLabel: "Agent A",
+		Input: models.ChatMessage{
+			SenderID:   "bob",
+			SenderKind: models.SenderKindUser,
+			Content:    "Quoted message context for this reply...\n\nIncoming reply message:\n@agent-a 这个说了啥",
+			Metadata: map[string]string{
+				"reply_to":               "msg-too-old",
+				"reply_excerpt":          "更完整的引用内容",
+				"reply_context_injected": "content",
+			},
+		},
+	}, false)
+	if strings.Contains(prompt, "Quoted message context for the incoming reply:") {
+		t.Fatalf("prompt duplicated reply context section:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Incoming reply message:") {
+		t.Fatalf("prompt lost relay-injected content:\n%s", prompt)
+	}
+}
+
 // TestCompleteInterruptReturnsSentinel verifies that cancelling the parent
 // context mid-run surfaces ErrProviderInterrupted (deliberate stop) rather
 // than a generic failure or timeout error.

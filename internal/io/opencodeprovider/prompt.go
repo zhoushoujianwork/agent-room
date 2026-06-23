@@ -108,6 +108,9 @@ func replyContextSection(input models.ChatMessage, history []models.ChatMessage)
 	if len(input.Metadata) == 0 {
 		return ""
 	}
+	if strings.EqualFold(strings.TrimSpace(input.Metadata["reply_context_injected"]), "content") {
+		return ""
+	}
 	replyTo := strings.TrimSpace(input.Metadata["reply_to"])
 	replySender := strings.TrimSpace(input.Metadata["reply_sender"])
 	replyExcerpt := strings.TrimSpace(input.Metadata["reply_excerpt"])

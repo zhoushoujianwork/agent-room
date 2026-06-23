@@ -214,6 +214,23 @@ func TestBuildOpenCodePromptFallsBackToReplyExcerpt(t *testing.T) {
 	}
 }
 
+func TestBuildOpenCodePromptSkipsReplySectionWhenRelayInjectedContent(t *testing.T) {
+	req := baseReq()
+	req.Input.Content = "Quoted message context for this reply...\n\nIncoming reply message:\n@alice 这个说了啥"
+	req.Input.Metadata = map[string]string{
+		"reply_to":               "msg-too-old",
+		"reply_excerpt":          "更完整的引用内容",
+		"reply_context_injected": "content",
+	}
+	prompt := buildOpenCodePrompt(req)
+	if strings.Contains(prompt, "Quoted message context for the incoming reply:") {
+		t.Fatalf("prompt duplicated reply context section:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Incoming reply message:") {
+		t.Fatalf("prompt lost relay-injected content:\n%s", prompt)
+	}
+}
+
 // TestCompleteAggregatesText: 基础回路 —— 发 prompt, 收到两段 text part,
 // session.idle 结束 -> 聚合文本 = 两段拼接, 并触发对应 ProviderEventText。
 func TestCompleteAggregatesText(t *testing.T) {

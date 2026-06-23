@@ -313,6 +313,76 @@ func TestPublishStampsExecTokenFromPresence(t *testing.T) {
 	}
 }
 
+func TestPublishInjectsReplyContextIntoTargetAgentCopy(t *testing.T) {
+	store := memory.NewStore()
+	service := chat.NewService(store)
+	h := newHub(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	target := newFakeClient("agent-a", models.SenderKindAgent)
+	observer := newFakeClient("alice", models.SenderKindUser)
+	h.rooms["demo"] = map[*client]struct{}{target: {}, observer: {}}
+
+	msg := models.ChatMessage{
+		Type:       models.MessageTypeChat,
+		SenderID:   "alice",
+		SenderKind: models.SenderKindUser,
+		TargetID:   "agent-a",
+		Content:    "@agent-a 这个说了啥",
+		Metadata: map[string]string{
+			"reply_to":      "msg-quoted",
+			"reply_sender":  "agent-a",
+			"reply_preview": "找到了。结论很明确：patent-translation JM 现状...",
+			"reply_excerpt": "找到了。结论很明确：JM pod restartCount=0，job 失败来自 TM Spot 回收，不是 JM 自身问题。",
+		},
+	}
+	saved, err := h.Publish(context.Background(), "demo", msg)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if saved.Content != msg.Content {
+		t.Fatalf("saved.Content changed = %q, want %q", saved.Content, msg.Content)
+	}
+	if saved.Metadata["reply_context_injected"] != "" {
+		t.Fatalf("saved metadata leaked injection marker: %#v", saved.Metadata)
+	}
+
+	stored, err := service.List(context.Background(), "demo", 10)
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("len(List) = %d, want 1", len(stored))
+	}
+	if stored[0].Content != msg.Content {
+		t.Fatalf("stored.Content changed = %q, want %q", stored[0].Content, msg.Content)
+	}
+
+	targetMsg := drain(t, target)
+	for _, want := range []string{
+		"Quoted message context for this reply",
+		"reply_to: msg-quoted",
+		"quoted_sender: agent-a",
+		"JM pod restartCount=0",
+		"Incoming reply message:",
+		"@agent-a 这个说了啥",
+	} {
+		if !strings.Contains(targetMsg.Content, want) {
+			t.Fatalf("target message missing %q:\n%s", want, targetMsg.Content)
+		}
+	}
+	if got := targetMsg.Metadata["reply_context_injected"]; got != "content" {
+		t.Fatalf("target metadata reply_context_injected = %q, want content", got)
+	}
+
+	observerMsg := drain(t, observer)
+	if observerMsg.Content != msg.Content {
+		t.Fatalf("observer.Content = %q, want original %q", observerMsg.Content, msg.Content)
+	}
+	if observerMsg.Metadata["reply_context_injected"] != "" {
+		t.Fatalf("observer received injection marker: %#v", observerMsg.Metadata)
+	}
+}
+
 // TestPublishStripsClientSuppliedExecToken verifies a client can never inject
 // a token: even if the sender includes one, it is dropped and (absent a
 // recorded executor token) never delivered to anyone.
