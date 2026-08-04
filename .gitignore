@@ -8,11 +8,12 @@ deploy-stage
 .env.*
 !.env.example
 !.build-hub/
-.build-hub/*
-!.build-hub/agent-room.md
+.build-hub/
 .claude/
+.agents/
 output/
 tmp/
+data/
 videos/
 design/exports/
 *.db
