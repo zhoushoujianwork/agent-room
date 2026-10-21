@@ -1,13 +1,9 @@
-frontend/node_modules/
 node_modules/
 .tmp/
 .build/
 build/
-frontend/tsconfig.tsbuildinfo
 /agent-room
 .DS_Store
-internal/api/relay/assets/downloads/agent-room-*
-deploy-stage
 .env
 .env.*
 !.env.example
@@ -18,8 +14,6 @@ deploy-stage
 output/
 tmp/
 data/
-videos/
-design/exports/
 *.db
 *.db-shm
 *.db-wal
